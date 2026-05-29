@@ -1,0 +1,116 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Carbon palette — "Signal 2.0" design language
+        ─────────────────────────────────────────────────────────────────────────
+        The v1 "blue soup" surfaces — where background, panels, text, and borders
+        were all blue-tinted — blurred the visual hierarchy.  Carbon fixes this:
+        backgrounds are near-neutral charcoal-black, so the electric cyan accent
+        actually pops.  A cyan→indigo gradient on interactive elements adds depth.
+        Text is closer to white (no blue tint), and borders are now visible.
+        Numeric data stays in Roboto Mono for the instrument-readout feel.
+    -->
+
+    <!-- ── Surface hierarchy: neutral charcoal, not blue-black ─────────── -->
+    <Color x:Key="BgColor">#0B0C11</Color>          <!-- near-black charcoal window base   -->
+    <Color x:Key="PanelColor">#131419</Color>        <!-- sidebar / card resting surface    -->
+    <Color x:Key="PanelAltColor">#191A23</Color>     <!-- inputs / further-elevated surface -->
+    <Color x:Key="HoverColor">#1F2030</Color>        <!-- hover state                       -->
+    <Color x:Key="PressColor">#262840</Color>        <!-- pressed / active highlight        -->
+
+    <!-- ── Accent: electric cyan (primary) + indigo (gradient terminus) ── -->
+    <Color x:Key="AccentColor">#00C8F0</Color>
+    <Color x:Key="AccentAltColor">#4488FF</Color>    <!-- indigo end of gradient            -->
+    <Color x:Key="AccentHoverColor">#26D4F5</Color>
+
+    <!-- ── Semantic ─────────────────────────────────────────────────────── -->
+    <Color x:Key="DangerColor">#F43F5E</Color>       <!-- rose-500, more vibrant            -->
+    <Color x:Key="SuccessColor">#10B981</Color>      <!-- emerald-500                       -->
+    <Color x:Key="WarningColor">#F59E0B</Color>      <!-- amber-500                         -->
+
+    <!-- ── Typography: high contrast, neutral (no blue tint) ───────────── -->
+    <Color x:Key="TextColor">#EEF1F8</Color>         <!-- bright near-white                 -->
+    <Color x:Key="SubtleTextColor">#909AAE</Color>   <!-- medium-contrast labels            -->
+    <Color x:Key="MutedTextColor">#545D72</Color>    <!-- low-contrast hints                -->
+
+    <!-- ── Border: visible hairline ─────────────────────────────────────── -->
+    <Color x:Key="BorderColor">#252736</Color>
+
+    <!-- ── Chart defaults (semantic, unchanged) ──────────────────────────── -->
+    <Color x:Key="ChartDownColor">#00C8F0</Color>
+    <Color x:Key="ChartUpColor">#FF8832</Color>
+
+    <!-- ══ Solid brushes ════════════════════════════════════════════════════ -->
+    <SolidColorBrush x:Key="BgBrush"          Color="{StaticResource BgColor}" />
+    <SolidColorBrush x:Key="PanelBrush"       Color="{StaticResource PanelColor}" />
+    <SolidColorBrush x:Key="PanelAltBrush"    Color="{StaticResource PanelAltColor}" />
+    <SolidColorBrush x:Key="HoverBrush"       Color="{StaticResource HoverColor}" />
+    <SolidColorBrush x:Key="AccentBrush"      Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="DangerBrush"      Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="SuccessBrush"     Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush"     Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="TextBrush"        Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="SubtleTextBrush"  Color="{StaticResource SubtleTextColor}" />
+    <SolidColorBrush x:Key="MutedTextBrush"   Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="BorderBrush"      Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="ChartDownBrush"   Color="{StaticResource ChartDownColor}" />
+    <SolidColorBrush x:Key="ChartUpBrush"     Color="{StaticResource ChartUpColor}" />
+
+    <!-- ── Gradient brushes ──────────────────────────────────────────────── -->
+    <!-- Pre-defined as resources so ControlTemplates and Styles can reference them
+         via DynamicResource on Background (Brush type) rather than on
+         GradientStop.Color (Color type) — the latter triggers a WPF freeze crash
+         when the brush lives inside a frozen Style/ResourceDictionary context. -->
+
+    <!-- Horizontal cyan→indigo: AccentButton, filter chip checked state -->
+    <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="{StaticResource AccentColor}"    Offset="0" />
+        <GradientStop Color="{StaticResource AccentAltColor}" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Vertical cyan→indigo: NavItem bar, DataGrid row accent strip, page header bar -->
+    <LinearGradientBrush x:Key="AccentGradientVerticalBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="{StaticResource AccentColor}"    Offset="0" />
+        <GradientStop Color="{StaticResource AccentAltColor}" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Hero card decorative underline rules (metric color → transparent) -->
+    <LinearGradientBrush x:Key="HeroDownRuleBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="{StaticResource AccentColor}" Offset="0" />
+        <GradientStop Color="#00000000"                    Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroUpRuleBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="{StaticResource ChartUpColor}" Offset="0" />
+        <GradientStop Color="#00000000"                     Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Hero card ambient backgrounds — subtle metric-tinted diagonal fill -->
+    <LinearGradientBrush x:Key="HeroDownCardBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#0C1E28" Offset="0" />
+        <GradientStop Color="#071318" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroUpCardBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#221507" Offset="0" />
+        <GradientStop Color="#150D04" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Active nav: subtle cyan-tinted surface -->
+    <SolidColorBrush x:Key="AccentMutedBrush" Color="#0D1D2C" />
+
+    <!-- Glass border — faint glint on card top edges -->
+    <SolidColorBrush x:Key="GlassBorderBrush" Color="#18FFFFFF" />
+
+    <!-- Selection / press -->
+    <SolidColorBrush x:Key="PressColorBrush"  Color="{StaticResource PressColor}" />
+    <SolidColorBrush x:Key="WindowBrush"      Color="{StaticResource PanelColor}" />
+
+    <!-- Badge tints -->
+    <SolidColorBrush x:Key="BadgeBlockedBg" Color="#2C0F1B" />
+    <SolidColorBrush x:Key="BadgeLimitBg"   Color="#0C2418" />
+    <SolidColorBrush x:Key="BadgeGameBg"    Color="#0D1C30" />
+    <SolidColorBrush x:Key="BadgeLocalBg"   Color="#141C2E" />
+    <SolidColorBrush x:Key="BadgeLocalFg"   Color="#8898B4" />
+
+</ResourceDictionary>

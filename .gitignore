@@ -1,0 +1,33 @@
+# Claude Code session files (local only)
+.claude/
+
+# Build output
+bin/
+obj/
+
+# Publish output (the distributable exe lives here — tracked separately as a GitHub Release)
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# User-specific data files (created at runtime, not source)
+*.db
+*.db-wal
+*.db-shm
+flow.log
+
+# Local research / scratch notes (not for distribution)
+research/

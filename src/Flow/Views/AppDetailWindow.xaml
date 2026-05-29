@@ -1,0 +1,197 @@
+<Window x:Class="Flow.Views.AppDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="App Detail"
+        Width="580" Height="440"
+        MinWidth="420" MinHeight="340"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource TextBrush}">
+
+    <Grid Margin="20,16,20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- live header -->
+            <RowDefinition Height="Auto" />  <!-- summary tiles -->
+            <RowDefinition Height="*"    />  <!-- chart -->
+            <RowDefinition Height="Auto" />  <!-- bottom note -->
+        </Grid.RowDefinitions>
+
+        <!-- ══ Live header ══════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="14,12" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Gradient accent bar + icon -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
+                    <Border Width="3" CornerRadius="2" Margin="0,0,10,0"
+                            Background="{DynamicResource AccentGradientVerticalBrush}" />
+                    <Border Width="38" Height="38" CornerRadius="10"
+                            Background="{DynamicResource PanelAltBrush}"
+                            VerticalAlignment="Center">
+                        <Image Source="{Binding Icon}" Width="28" Height="28"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+                </StackPanel>
+
+                <!-- Name + live rate -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="AppNameText"
+                               FontSize="15" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="↓ " Foreground="{DynamicResource ChartDownBrush}" FontSize="12" />
+                        <TextBlock x:Name="LiveDownRate" FontSize="12" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}" />
+                        <TextBlock x:Name="LiveDownRateUnit" FontSize="9"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,12,1" />
+                        <TextBlock Text="↑ " Foreground="{DynamicResource ChartUpBrush}" FontSize="12" />
+                        <TextBlock x:Name="LiveUpRate" FontSize="12" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}" />
+                        <TextBlock x:Name="LiveUpRateUnit" FontSize="9"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Live 30-second sparklines -->
+                <StackPanel Grid.Column="2" Width="110" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Viewbox Width="110" Height="18" Stretch="Fill">
+                        <Path x:Name="LiveDownSpark"
+                              Stroke="{DynamicResource ChartDownBrush}" StrokeThickness="1.5"
+                              StrokeLineJoin="Round" Width="80" Height="18" />
+                    </Viewbox>
+                    <Viewbox Width="110" Height="18" Stretch="Fill" Margin="0,4,0,0">
+                        <Path x:Name="LiveUpSpark"
+                              Stroke="{DynamicResource ChartUpBrush}" StrokeThickness="1.5"
+                              StrokeLineJoin="Round" Width="80" Height="18" />
+                    </Viewbox>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══ Summary tiles ════════════════════════════════════════════════════ -->
+        <UniformGrid Grid.Row="1" Rows="1" Margin="0,0,0,10">
+            <Border Style="{StaticResource Card}" Margin="0,0,5,0" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Text="TODAY" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,5"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                        <TextBlock Text="↓ " Foreground="{DynamicResource ChartDownBrush}" FontSize="13"/>
+                        <TextBlock x:Name="TodayDown" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}" />
+                        <TextBlock x:Name="TodayDownUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="↑ " Foreground="{DynamicResource ChartUpBrush}" FontSize="13"/>
+                        <TextBlock x:Name="TodayUp" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}" />
+                        <TextBlock x:Name="TodayUpUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="5,0,5,0" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Text="LAST 7 DAYS" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,5"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                        <TextBlock Text="↓ " Foreground="{DynamicResource ChartDownBrush}" FontSize="13"/>
+                        <TextBlock x:Name="WeekDown" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}" />
+                        <TextBlock x:Name="WeekDownUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="↑ " Foreground="{DynamicResource ChartUpBrush}" FontSize="13"/>
+                        <TextBlock x:Name="WeekUp" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}" />
+                        <TextBlock x:Name="WeekUpUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="5,0,0,0" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Text="ALL TIME" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,5"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                        <TextBlock Text="↓ " Foreground="{DynamicResource ChartDownBrush}" FontSize="13"/>
+                        <TextBlock x:Name="AllDown" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}" />
+                        <TextBlock x:Name="AllDownUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartDownBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="↑ " Foreground="{DynamicResource ChartUpBrush}" FontSize="13"/>
+                        <TextBlock x:Name="AllUp" FontSize="13" FontWeight="Medium"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}" />
+                        <TextBlock x:Name="AllUpUnit" FontSize="10"
+                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                   Foreground="{DynamicResource ChartUpBrush}"
+                                   VerticalAlignment="Bottom" Margin="2,0,0,1" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- ══ History chart ════════════════════════════════════════════════════ -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+            <Grid>
+                <Border CornerRadius="4" Background="{DynamicResource PanelAltBrush}" />
+                <Canvas x:Name="ChartCanvas" ClipToBounds="True" Margin="4" />
+
+                <!-- Range toggle — top-left -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="8,6,0,0">
+                    <ToggleButton x:Name="Range24hBtn" Style="{StaticResource PillToggle}"
+                                  Content="24 h" IsChecked="True"
+                                  Click="OnRange24h" />
+                    <ToggleButton x:Name="Range7dBtn"  Style="{StaticResource PillToggle}"
+                                  Content="7 d" Margin="6,0,0,0"
+                                  Click="OnRange7d" />
+                </StackPanel>
+
+                <TextBlock x:Name="ChartPeakLabel" FontSize="9" FontWeight="SemiBold"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           HorizontalAlignment="Right" VerticalAlignment="Top"
+                           Margin="0,6,8,0" IsHitTestVisible="False"/>
+                <TextBlock x:Name="NoDataText" Text="No recorded data for this app"
+                           FontSize="12" Foreground="{DynamicResource SubtleTextBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed" IsHitTestVisible="False"/>
+            </Grid>
+        </Border>
+
+        <!-- ══ Bottom note ══════════════════════════════════════════════════════ -->
+        <TextBlock Grid.Row="3" Margin="0,8,0,0" FontSize="10"
+                   Foreground="{DynamicResource SubtleTextBrush}"
+                   Text="Double-click an app row to reopen. Live sparklines update every 500 ms while this window is open." />
+    </Grid>
+</Window>
