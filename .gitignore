@@ -5,8 +5,9 @@
 bin/
 obj/
 
-# Publish output (the distributable exe lives here — tracked separately as a GitHub Release)
+# Build/publish output — tracked separately as GitHub Release assets
 publish/
+release/
 
 # Visual Studio
 .vs/
