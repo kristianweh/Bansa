@@ -1,5 +1,6 @@
 using OpenRGB.NET;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using WpfColor = System.Windows.Media.Color;
 using RgbColor = OpenRGB.NET.Color;
 
@@ -21,6 +22,10 @@ public sealed class OpenRgbService : IDisposable
     public bool IsConnected => State == OpenRgbConnectionState.Connected;
 
     public event Action? StateChanged;
+
+    // Win32 — used to hide the OpenRGB window after the server is ready
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_HIDE = 0;
 
     // ── Called once at app startup ────────────────────────────────────────────
 
@@ -87,9 +92,9 @@ public sealed class OpenRgbService : IDisposable
             return;
         }
 
-        // Give it up to 20 s to accept connections.
-        // OpenRGB 1.0+ loads drivers on startup which takes a few seconds.
-        for (int i = 0; i < 40; i++)
+        // Give it up to 45 s to accept connections.
+        // OpenRGB 1.0+ loads device drivers on startup (PawnIO etc.) which takes time.
+        for (int i = 0; i < 90; i++)
         {
             await Task.Delay(500);
 
@@ -103,7 +108,17 @@ public sealed class OpenRgbService : IDisposable
                 return;
             }
 
-            if (await TryConnectAsync(port)) return;
+            if (await TryConnectAsync(port))
+            {
+                // Successfully connected — hide the OpenRGB window so it's invisible to the user.
+                // Small delay lets Qt finish painting before we hide it.
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(800);
+                    HideServerWindow();
+                });
+                return;
+            }
         }
 
         SetState(OpenRgbConnectionState.Error, "OpenRGB server started but did not respond");
@@ -129,6 +144,20 @@ public sealed class OpenRgbService : IDisposable
         }
     }
 
+    // Hides the OpenRGB window after we connect — user manages lighting through Flow only.
+    // We let OpenRGB start normally (hidden at launch breaks Qt's event loop / server init).
+    private void HideServerWindow()
+    {
+        try
+        {
+            _serverProcess?.Refresh();
+            var hwnd = _serverProcess?.MainWindowHandle ?? IntPtr.Zero;
+            if (hwnd != IntPtr.Zero)
+                ShowWindow(hwnd, SW_HIDE);
+        }
+        catch { }
+    }
+
     // Captured output from the OpenRGB process for diagnostics
     public string LastLaunchLog { get; private set; } = "";
 
@@ -147,11 +176,12 @@ public sealed class OpenRgbService : IDisposable
                     WorkingDirectory       = Downloader.InstallDir,
                     RedirectStandardOutput = true,
                     RedirectStandardError  = true,
-                    // Hide the OpenRGB GUI window — user manages everything through Flow.
-                    // SW_HIDE via STARTUPINFO is respected by Qt on startup.
                     // Do NOT set CreateNoWindow — that's a console-subsystem flag and
                     // corrupts Qt's message-loop initialization for GUI applications.
-                    WindowStyle            = System.Diagnostics.ProcessWindowStyle.Hidden,
+                    // Do NOT set WindowStyle.Hidden either — Qt's SDK server only begins
+                    // accepting connections once the event loop is running, and SW_HIDE
+                    // prevents Qt from fully processing the window-show sequence that
+                    // triggers exec().  We hide the window via Win32 after connecting.
                 },
                 EnableRaisingEvents = true,
             };
