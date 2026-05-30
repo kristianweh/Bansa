@@ -87,10 +87,20 @@ public sealed class OpenRgbService : IDisposable
             return;
         }
 
-        // Give it up to 6 s to accept connections.
-        for (int i = 0; i < 12; i++)
+        // Give it up to 20 s to accept connections.
+        // OpenRGB 1.0+ loads drivers on startup which takes a few seconds.
+        for (int i = 0; i < 40; i++)
         {
             await Task.Delay(500);
+
+            // Fail fast if the process already exited (crash / missing dependency)
+            if (_serverProcess is { HasExited: true })
+            {
+                SetState(OpenRgbConnectionState.Error,
+                    $"OpenRGB exited unexpectedly (code {_serverProcess.ExitCode})");
+                return;
+            }
+
             if (await TryConnectAsync(port)) return;
         }
 
