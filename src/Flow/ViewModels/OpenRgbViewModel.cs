@@ -2,9 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Flow.Services;
 using OpenRGB.NET;
-using WpfOpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using System.Collections.ObjectModel;
-using WpfColor = System.Windows.Media.Color;
+using WpfColor  = System.Windows.Media.Color;
 using WpfColors = System.Windows.Media.Colors;
 
 namespace Flow.ViewModels;
@@ -12,35 +11,71 @@ namespace Flow.ViewModels;
 public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
 {
     private readonly OpenRgbService _service = new();
+    private CancellationTokenSource? _downloadCts;
 
-    [ObservableProperty] private bool      _isConnected;
-    [ObservableProperty] private bool      _isConnecting;
-    [ObservableProperty] private string    _statusText = "Not connected";
-    [ObservableProperty] private bool      _hasExe;
-    [ObservableProperty] private WpfColor  _globalColor = WpfColors.White;
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    [ObservableProperty] private bool     _isConnected;
+    [ObservableProperty] private bool     _isConnecting;
+    [ObservableProperty] private bool     _isDownloading;
+    [ObservableProperty] private bool     _needsSetup;    // true until first successful install
+    [ObservableProperty] private int      _downloadProgress;
+    [ObservableProperty] private string   _downloadStatus = "";
+    [ObservableProperty] private string   _statusText     = "Starting…";
+    [ObservableProperty] private WpfColor _globalColor    = WpfColors.White;
 
     public ObservableCollection<OpenRgbDeviceItem> Devices { get; } = [];
 
     public OpenRgbViewModel()
     {
         _service.StateChanged += OnServiceStateChanged;
-        RefreshExeStatus();
+        NeedsSetup = !_service.Downloader.IsInstalled;
     }
+
+    // ── App-startup init (called from MainWindow after load) ──────────────────
+
+    /// Silently connects if OpenRGB is already installed; no-ops otherwise.
+    public async Task InitAsync() => await _service.StartAsync();
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
-    [RelayCommand(CanExecute = nameof(CanConnect))]
-    private async Task ConnectAsync()
+    /// One-time setup: download + auto-connect. User clicks once, done forever.
+    [RelayCommand(CanExecute = nameof(CanSetup))]
+    private async Task SetupAsync()
     {
-        IsConnecting = true;
-        await _service.ConnectAsync();
-        IsConnecting = false;
+        _downloadCts = new CancellationTokenSource();
+        IsDownloading = true;
+
+        try
+        {
+            await _service.Downloader.DownloadAsync(
+                p  => Dispatch(() => DownloadProgress = p),
+                s  => Dispatch(() => DownloadStatus   = s),
+                _downloadCts.Token);
+
+            NeedsSetup = false;
+            await _service.ConnectAfterDownloadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            DownloadStatus = "Cancelled";
+        }
+        catch (Exception ex)
+        {
+            DownloadStatus = $"Download failed: {ex.Message}";
+        }
+        finally
+        {
+            IsDownloading = false;
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+        }
     }
 
-    private bool CanConnect() => !IsConnected && !IsConnecting;
+    private bool CanSetup() => !IsDownloading && !IsConnected;
 
-    [RelayCommand(CanExecute = nameof(IsConnected))]
-    private void Disconnect() => _service.Disconnect();
+    [RelayCommand]
+    private void CancelDownload() => _downloadCts?.Cancel();
 
     [RelayCommand(CanExecute = nameof(IsConnected))]
     private async Task ApplyGlobalColorAsync() =>
@@ -49,20 +84,6 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(IsConnected))]
     private async Task TurnOffAsync() => await _service.TurnOffAllAsync();
 
-    [RelayCommand]
-    private async Task BrowseForExeAsync()
-    {
-        var dlg = new WpfOpenFileDialog
-        {
-            Title  = "Locate OpenRGB portable executable",
-            Filter = "OpenRGB.exe|OpenRGB.exe|All executables|*.exe",
-        };
-        if (dlg.ShowDialog() != true) return;
-
-        await OpenRgbService.ImportPortableExeAsync(dlg.FileName);
-        RefreshExeStatus();
-    }
-
     // ── Device-level color ────────────────────────────────────────────────────
 
     public async Task SetDeviceColorAsync(int index, WpfColor color) =>
@@ -70,21 +91,17 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
-    private void OnServiceStateChanged()
+    private void OnServiceStateChanged() => Dispatch(() =>
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            StatusText   = _service.StateText;
-            IsConnected  = _service.IsConnected;
-            IsConnecting = _service.State == OpenRgbConnectionState.Connecting;
+        StatusText   = _service.StateText;
+        IsConnected  = _service.IsConnected;
+        IsConnecting = _service.State == OpenRgbConnectionState.Connecting;
 
-            ConnectCommand.NotifyCanExecuteChanged();
-            DisconnectCommand.NotifyCanExecuteChanged();
-            ApplyGlobalColorCommand.NotifyCanExecuteChanged();
-            TurnOffCommand.NotifyCanExecuteChanged();
-            RefreshDevices();
-        });
-    }
+        ApplyGlobalColorCommand.NotifyCanExecuteChanged();
+        TurnOffCommand.NotifyCanExecuteChanged();
+        SetupCommand.NotifyCanExecuteChanged();
+        RefreshDevices();
+    });
 
     private void RefreshDevices()
     {
@@ -93,10 +110,15 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
             Devices.Add(new OpenRgbDeviceItem(idx, dev, this));
     }
 
-    private void RefreshExeStatus() =>
-        HasExe = OpenRgbService.FindOpenRgbExe() is not null;
+    private static void Dispatch(Action a) =>
+        System.Windows.Application.Current.Dispatcher.Invoke(a);
 
-    public void Dispose() => _service.Dispose();
+    public void Dispose()
+    {
+        _downloadCts?.Cancel();
+        _downloadCts?.Dispose();
+        _service.Dispose();
+    }
 }
 
 // ── Per-device item ───────────────────────────────────────────────────────────

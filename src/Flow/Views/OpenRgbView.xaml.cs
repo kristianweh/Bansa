@@ -1,13 +1,11 @@
 using Flow.ViewModels;
 using System.Diagnostics;
-using System.IO;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Navigation;
-using WpfColor = System.Windows.Media.Color;
+using WpfColor     = System.Windows.Media.Color;
 using DrawingColor = System.Drawing.Color;
-using WinForms = System.Windows.Forms;
-using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
+using WinForms     = System.Windows.Forms;
+using WpfKeyArgs   = System.Windows.Input.KeyEventArgs;
 
 namespace Flow.Views;
 
@@ -17,37 +15,36 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
 
     private static readonly ColorPreset[] Presets =
     [
-        new("White",   "#FFFFFF", WpfColor.FromRgb(255, 255, 255)),
-        new("Red",     "#FF0000", WpfColor.FromRgb(255,   0,   0)),
-        new("Orange",  "#FF6600", WpfColor.FromRgb(255, 102,   0)),
-        new("Yellow",  "#FFFF00", WpfColor.FromRgb(255, 255,   0)),
-        new("Green",   "#00FF00", WpfColor.FromRgb(  0, 255,   0)),
-        new("Cyan",    "#00FFFF", WpfColor.FromRgb(  0, 255, 255)),
-        new("Blue",    "#0000FF", WpfColor.FromRgb(  0,   0, 255)),
-        new("Purple",  "#9900FF", WpfColor.FromRgb(153,   0, 255)),
-        new("Pink",    "#FF00FF", WpfColor.FromRgb(255,   0, 255)),
+        new("White",  "#FFFFFF", WpfColor.FromRgb(255, 255, 255)),
+        new("Red",    "#FF0000", WpfColor.FromRgb(255,   0,   0)),
+        new("Orange", "#FF6600", WpfColor.FromRgb(255, 102,   0)),
+        new("Yellow", "#FFFF00", WpfColor.FromRgb(255, 255,   0)),
+        new("Green",  "#00FF00", WpfColor.FromRgb(  0, 255,   0)),
+        new("Cyan",   "#00FFFF", WpfColor.FromRgb(  0, 255, 255)),
+        new("Blue",   "#0000FF", WpfColor.FromRgb(  0,   0, 255)),
+        new("Purple", "#9900FF", WpfColor.FromRgb(153,   0, 255)),
+        new("Pink",   "#FF00FF", WpfColor.FromRgb(255,   0, 255)),
     ];
 
     public OpenRgbView()
     {
         InitializeComponent();
-        PresetSwatches.ItemsSource = Presets;
-        ToolsFolderText.Text = Path.Combine(App.DataFolder, "Tools", "OpenRGB.exe");
-        DataContextChanged += (_, _) => SyncHexFromVm();
+        PresetColors.ItemsSource = Presets;
+        DataContextChanged += (_, _) => SyncHex();
     }
 
-    // ── Global color swatch ───────────────────────────────────────────────────
+    // ── Global color ──────────────────────────────────────────────────────────
 
-    private void OnColorSwatchClick(object sender, MouseButtonEventArgs e)
+    private void OnGlobalSwatchClick(object sender, MouseButtonEventArgs e)
     {
         if (Vm is null) return;
-        var picked = PickColor(Vm.GlobalColor);
-        if (picked is null) return;
-        Vm.GlobalColor = picked.Value;
-        HexInput.Text  = ColorToHex(picked.Value);
+        var c = PickColor(Vm.GlobalColor);
+        if (c is null) return;
+        Vm.GlobalColor = c.Value;
+        HexInput.Text  = ToHex(c.Value);
     }
 
-    private void OnPresetSwatchClick(object sender, MouseButtonEventArgs e)
+    private void OnPresetClick(object sender, MouseButtonEventArgs e)
     {
         if (Vm is null) return;
         if (sender is FrameworkElement { Tag: string hex })
@@ -59,11 +56,8 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
         }
     }
 
-    // ── Hex input ─────────────────────────────────────────────────────────────
-
-    private void OnHexInputLostFocus(object sender, RoutedEventArgs e) => ApplyHex();
-
-    private void OnHexInputKeyDown(object sender, WpfKeyEventArgs e)
+    private void OnHexLostFocus(object sender, RoutedEventArgs e) => ApplyHex();
+    private void OnHexKeyDown(object sender, WpfKeyArgs e)
     {
         if (e.Key == Key.Enter) ApplyHex();
     }
@@ -76,7 +70,7 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
         Vm.GlobalColor = c.Value;
     }
 
-    // ── Per-device color swatch ───────────────────────────────────────────────
+    // ── Per-device color ──────────────────────────────────────────────────────
 
     private void OnDeviceSwatchClick(object sender, MouseButtonEventArgs e)
     {
@@ -84,25 +78,9 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
         if (sender is not FrameworkElement { Tag: int idx }) return;
         var item = Vm.Devices.FirstOrDefault(d => d.Index == idx);
         if (item is null) return;
-
-        var picked = PickColor(item.Color);
-        if (picked is null) return;
-        item.Color = picked.Value;
-    }
-
-    // ── Setup helpers ─────────────────────────────────────────────────────────
-
-    private void OnOpenRgbLinkClick(object sender, RequestNavigateEventArgs e)
-    {
-        Process.Start(new ProcessStartInfo("https://openrgb.org") { UseShellExecute = true });
-        e.Handled = true;
-    }
-
-    private void OnOpenToolsFolder(object sender, RoutedEventArgs e)
-    {
-        var folder = Path.Combine(App.DataFolder, "Tools");
-        Directory.CreateDirectory(folder);
-        Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
+        var c = PickColor(item.Color);
+        if (c is null) return;
+        item.Color = c.Value;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -120,7 +98,7 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
             : null;
     }
 
-    private static string ColorToHex(WpfColor c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+    private static string ToHex(WpfColor c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 
     private static WpfColor? ParseHex(string? s)
     {
@@ -129,18 +107,18 @@ public partial class OpenRgbView : System.Windows.Controls.UserControl
         if (s.Length != 6) return null;
         try
         {
-            byte r = Convert.ToByte(s[0..2], 16);
-            byte g = Convert.ToByte(s[2..4], 16);
-            byte b = Convert.ToByte(s[4..6], 16);
-            return WpfColor.FromRgb(r, g, b);
+            return WpfColor.FromRgb(
+                Convert.ToByte(s[0..2], 16),
+                Convert.ToByte(s[2..4], 16),
+                Convert.ToByte(s[4..6], 16));
         }
         catch { return null; }
     }
 
-    private void SyncHexFromVm()
+    private void SyncHex()
     {
         if (Vm is null) return;
-        HexInput.Text = ColorToHex(Vm.GlobalColor);
+        HexInput.Text = ToHex(Vm.GlobalColor);
     }
 }
 

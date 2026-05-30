@@ -11,26 +11,103 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- Title -->
             <TextBlock Grid.Row="0" Text="RGB Lighting" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4" />
-            <TextBlock Grid.Row="1" Text="Control OpenRGB-compatible devices without leaving Flow."
+            <TextBlock Grid.Row="1" Text="Control your RGB devices directly from Flow."
                        Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,0,16" />
 
-            <!-- ── Status card ──────────────────────────────────────────────── -->
-            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <!-- ── First-run setup card ────────────────────────────────────── -->
+            <!-- Shown only until OpenRGB is downloaded (NeedsSetup = true) -->
+            <Border Grid.Row="2" Padding="24,20" Margin="0,0,0,12">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding NeedsSetup}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
 
-                    <!-- Status dot -->
-                    <Ellipse Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,12,0">
+                <StackPanel>
+                    <!-- Idle state: explain + single button -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="One-time setup required" FontWeight="SemiBold" FontSize="15"
+                                   Margin="0,0,0,8" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}"
+                                   Margin="0,0,0,16" MaxWidth="560" HorizontalAlignment="Left">
+                            Flow uses OpenRGB to communicate with your RGB hardware. A small portable
+                            copy (~30 MB) will be downloaded once and managed automatically — you will
+                            never need to open or configure it yourself.
+                        </TextBlock>
+                        <Button Content="Set up RGB Lighting"
+                                Padding="20,10"
+                                Style="{StaticResource AccentButton}"
+                                Command="{Binding SetupCommand}"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
+
+                    <!-- Downloading state: progress bar + status -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{Binding DownloadStatus}" FontWeight="SemiBold"
+                                   Margin="0,0,0,12" />
+                        <!-- Progress track -->
+                        <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="3"
+                                Height="6" MaxWidth="400" HorizontalAlignment="Left" Margin="0,0,0,14">
+                            <Border x:Name="ProgressFill"
+                                    Background="{DynamicResource AccentBrush}"
+                                    HorizontalAlignment="Left" Height="6" CornerRadius="3">
+                                <Border.Width>
+                                    <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
+                                        <Binding Path="DownloadProgress" />
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Border}" Path="ActualWidth" />
+                                    </MultiBinding>
+                                </Border.Width>
+                            </Border>
+                        </Border>
+                        <Button Content="Cancel" Padding="14,7"
+                                Command="{Binding CancelDownloadCommand}"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Status bar (always visible once installed) ────────────── -->
+            <Border Grid.Row="3" Padding="18,12" Margin="0,0,0,12">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding NeedsSetup}" Value="False">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,10,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
                                 <Setter Property="Fill" Value="{DynamicResource SubtleTextBrush}" />
@@ -45,159 +122,12 @@
                             </Style>
                         </Ellipse.Style>
                     </Ellipse>
-
-                    <!-- Status text -->
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" />
-                        <TextBlock Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,1,0,0">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Text" Value="OpenRGB SDK server on port 6742" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                            <Setter Property="Text" Value="Connected to OpenRGB SDK server" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-
-                    <!-- Connect (hidden when already connected) -->
-                    <Button Grid.Column="2" Content="Connect" Padding="16,8"
-                            Command="{Binding ConnectCommand}" Margin="8,0,0,0" VerticalAlignment="Center">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-
-                    <!-- Disconnect (visible only when connected) -->
-                    <Button Grid.Column="3" Content="Disconnect" Padding="16,8"
-                            Command="{Binding DisconnectCommand}" Margin="8,0,0,0" VerticalAlignment="Center">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- ── Setup notice (shown when OpenRGB.exe is not found) ─────── -->
-            <Border Grid.Row="3" Padding="18,14" Margin="0,0,0,12">
-                <Border.Style>
-                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding HasExe}" Value="False">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Border.Style>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="OpenRGB not found" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,4" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}">
-                            Flow couldn't find OpenRGB.exe. Download the portable version from
-                            <Hyperlink x:Name="OpenRgbLink" RequestNavigate="OnOpenRgbLinkClick">
-                                openrgb.org
-                            </Hyperlink>
-                            and place it in the Tools folder, or use Browse to locate it.
-                        </TextBlock>
-                        <TextBlock x:Name="ToolsFolderText" Foreground="{DynamicResource SubtleTextBrush}"
-                                   FontSize="11" Margin="0,6,0,0" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
-                        <Button Content="Browse…" Padding="16,8" Command="{Binding BrowseForExeCommand}"
-                                Margin="0,0,0,6" />
-                        <Button Content="Open Tools folder" Padding="16,8" Click="OnOpenToolsFolder" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- ── Global color controls (visible when connected) ─────────── -->
-            <Border Grid.Row="4" Padding="18,14" Margin="0,0,0,12">
-                <Border.Style>
-                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Border.Style>
-                <StackPanel>
-                    <TextBlock Text="Global control" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
-                    <WrapPanel Orientation="Horizontal">
-                        <!-- Color swatch — click to open color picker -->
-                        <Border Width="36" Height="36" CornerRadius="6" Margin="0,0,10,0"
-                                BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}"
-                                Cursor="Hand" MouseLeftButtonUp="OnColorSwatchClick"
-                                ToolTip="Click to pick a color">
-                            <Border.Background>
-                                <SolidColorBrush x:Name="GlobalSwatchBrush" Color="{Binding GlobalColor}" />
-                            </Border.Background>
-                        </Border>
-
-                        <!-- Hex input -->
-                        <TextBox x:Name="HexInput" Width="90" VerticalAlignment="Center"
-                                 Padding="8,6" FontFamily="Roboto Mono, Consolas"
-                                 Text="#FFFFFF"
-                                 LostFocus="OnHexInputLostFocus"
-                                 KeyDown="OnHexInputKeyDown"
-                                 Margin="0,0,10,0" />
-
-                        <Button Content="Apply to all" Padding="14,8"
-                                Style="{StaticResource AccentButton}"
-                                Command="{Binding ApplyGlobalColorCommand}"
-                                Margin="0,0,8,0" />
-
-                        <Button Content="Turn off" Padding="14,8"
-                                Command="{Binding TurnOffCommand}" />
-
-                        <!-- Quick-pick preset swatches -->
-                        <ItemsControl x:Name="PresetSwatches" Margin="16,0,0,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,4,0"
-                                            Cursor="Hand" ToolTip="{Binding Name}"
-                                            MouseLeftButtonUp="OnPresetSwatchClick"
-                                            Tag="{Binding Hex}">
-                                        <Border.Background>
-                                            <SolidColorBrush Color="{Binding MediaColor}" />
-                                        </Border.Background>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </WrapPanel>
+                    <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" />
                 </StackPanel>
             </Border>
 
-            <!-- ── Device list (visible when connected) ──────────────────── -->
-            <StackPanel Grid.Row="5">
+            <!-- ── Controls + device list (connected only) ───────────────── -->
+            <StackPanel Grid.Row="4">
                 <StackPanel.Style>
                     <Style TargetType="StackPanel">
                         <Setter Property="Visibility" Value="Collapsed" />
@@ -209,6 +139,56 @@
                     </Style>
                 </StackPanel.Style>
 
+                <!-- Global controls card -->
+                <Border Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Global" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
+                        <WrapPanel Orientation="Horizontal">
+                            <!-- Color swatch -->
+                            <Border Width="36" Height="36" CornerRadius="6" Margin="0,0,10,0"
+                                    BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}"
+                                    Cursor="Hand" MouseLeftButtonUp="OnGlobalSwatchClick"
+                                    ToolTip="Click to pick a color">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding GlobalColor}" />
+                                </Border.Background>
+                            </Border>
+                            <!-- Hex input -->
+                            <TextBox x:Name="HexInput" Width="90" VerticalAlignment="Center"
+                                     Padding="8,6" FontFamily="Roboto Mono, Consolas"
+                                     Text="#FFFFFF"
+                                     LostFocus="OnHexLostFocus"
+                                     KeyDown="OnHexKeyDown"
+                                     Margin="0,0,10,0" />
+                            <Button Content="Apply to all" Padding="14,8"
+                                    Style="{StaticResource AccentButton}"
+                                    Command="{Binding ApplyGlobalColorCommand}"
+                                    Margin="0,0,8,0" />
+                            <Button Content="Turn off" Padding="14,8"
+                                    Command="{Binding TurnOffCommand}" />
+                            <!-- Preset swatches -->
+                            <ItemsControl x:Name="PresetColors" Margin="16,4,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Width="24" Height="24" CornerRadius="4" Margin="0,0,5,0"
+                                                Cursor="Hand" ToolTip="{Binding Name}"
+                                                MouseLeftButtonUp="OnPresetClick"
+                                                Tag="{Binding Hex}">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding MediaColor}" />
+                                            </Border.Background>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Device list -->
                 <TextBlock Text="Devices" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
 
                 <ItemsControl ItemsSource="{Binding Devices}">
@@ -221,18 +201,17 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                        <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12">
+                                        <TextBlock Margin="0,2,0,0"
+                                                   Foreground="{DynamicResource SubtleTextBrush}"
+                                                   FontSize="12">
                                             <Run Text="{Binding Type}" />
                                             <Run Text=" · " />
                                             <Run Text="{Binding LedCount}" />
                                             <Run Text=" LEDs" />
                                         </TextBlock>
                                     </StackPanel>
-
-                                    <!-- Per-device color swatch -->
                                     <Border Grid.Column="1" Width="28" Height="28" CornerRadius="5"
                                             BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}"
                                             Cursor="Hand" VerticalAlignment="Center" Margin="0,0,8,0"
@@ -243,8 +222,6 @@
                                             <SolidColorBrush Color="{Binding Color}" />
                                         </Border.Background>
                                     </Border>
-
-                                    <!-- Apply device color -->
                                     <Button Grid.Column="2" Content="Apply" Padding="12,6"
                                             Style="{StaticResource AccentButton}"
                                             Command="{Binding ApplyColorCommand}"
@@ -255,10 +232,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Empty state when connected but no devices detected -->
-                <TextBlock Foreground="{DynamicResource SubtleTextBrush}"
-                           Text="No devices detected. Make sure your RGB hardware is recognized by OpenRGB."
-                           TextWrapping="Wrap" Margin="0,4,0,0">
+                <!-- Empty state -->
+                <TextBlock Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap"
+                           Text="No RGB devices detected. Make sure your hardware is plugged in."
+                           Margin="0,4,0,0">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Visibility" Value="Collapsed" />

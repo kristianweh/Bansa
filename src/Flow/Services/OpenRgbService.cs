@@ -1,6 +1,5 @@
 using OpenRGB.NET;
 using System.Diagnostics;
-using System.IO;
 using WpfColor = System.Windows.Media.Color;
 using RgbColor = OpenRGB.NET.Color;
 
@@ -10,86 +9,39 @@ public enum OpenRgbConnectionState { Disconnected, Connecting, Connected, Error 
 
 public sealed class OpenRgbService : IDisposable
 {
+    public readonly OpenRgbDownloader Downloader = new();
+
     private OpenRgbClient? _client;
-    private Process?       _managedProcess;
+    private Process?       _serverProcess;
     private bool           _disposed;
 
     public OpenRgbConnectionState State     { get; private set; } = OpenRgbConnectionState.Disconnected;
-    public string                 StateText { get; private set; } = "Not connected";
+    public string                 StateText { get; private set; } = "Starting…";
     public IReadOnlyList<Device>  Devices   { get; private set; } = [];
     public bool IsConnected => State == OpenRgbConnectionState.Connected;
 
     public event Action? StateChanged;
 
-    // ── Path resolution ───────────────────────────────────────────────────────
+    // ── Called once at app startup ────────────────────────────────────────────
 
-    public static string? FindOpenRgbExe()
+    /// Silently starts the OpenRGB server and connects. No-ops if exe is missing.
+    public async Task StartAsync(int port = 6742)
     {
-        var toolsPath = Path.Combine(App.DataFolder, "Tools", "OpenRGB.exe");
-        if (File.Exists(toolsPath)) return toolsPath;
-
-        foreach (var candidate in CommonInstallPaths())
-            if (File.Exists(candidate)) return candidate;
-
-        return null;
+        if (!Downloader.IsInstalled) return;
+        await ConnectInternalAsync(port);
     }
 
-    private static IEnumerable<string> CommonInstallPaths()
-    {
-        var pf  = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var pfx = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        yield return Path.Combine(pf,  "OpenRGB", "OpenRGB.exe");
-        yield return Path.Combine(pfx, "OpenRGB", "OpenRGB.exe");
-    }
+    // ── Called when user completes the one-time download ─────────────────────
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    public async Task ConnectAsync(string host = "localhost", int port = 6742)
-    {
-        if (IsConnected) return;
-
-        SetState(OpenRgbConnectionState.Connecting, "Connecting…");
-
-        if (await TryConnectClientAsync(host, port)) return;
-
-        var exe = FindOpenRgbExe();
-        if (exe is null)
-        {
-            SetState(OpenRgbConnectionState.Error, "OpenRGB.exe not found");
-            return;
-        }
-
-        LaunchServer(exe, port);
-
-        for (int i = 0; i < 10; i++)
-        {
-            await Task.Delay(500);
-            if (await TryConnectClientAsync(host, port)) return;
-        }
-
-        SetState(OpenRgbConnectionState.Error, "Server started but connection timed out");
-    }
-
-    public void Disconnect()
-    {
-        DisposeClient();
-        SetState(OpenRgbConnectionState.Disconnected, "Not connected");
-        Devices = [];
-    }
-
-    public static async Task ImportPortableExeAsync(string sourcePath)
-    {
-        var dest = Path.Combine(App.DataFolder, "Tools", "OpenRGB.exe");
-        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-        await Task.Run(() => File.Copy(sourcePath, dest, overwrite: true));
-    }
+    public async Task ConnectAfterDownloadAsync(int port = 6742) =>
+        await ConnectInternalAsync(port);
 
     // ── Device control ────────────────────────────────────────────────────────
 
     public async Task SetAllColorsAsync(WpfColor color)
     {
         if (_client is null || !IsConnected) return;
-        var c = ToRgbColor(color);
+        var c = ToRgb(color);
         await Task.Run(() =>
         {
             for (int i = 0; i < Devices.Count; i++)
@@ -106,7 +58,7 @@ public sealed class OpenRgbService : IDisposable
     {
         if (_client is null || !IsConnected) return;
         if (deviceIndex < 0 || deviceIndex >= Devices.Count) return;
-        var c    = ToRgbColor(color);
+        var c    = ToRgb(color);
         var leds = new RgbColor[Devices[deviceIndex].Leds.Length];
         leds.AsSpan().Fill(c);
         await Task.Run(() =>
@@ -121,17 +73,41 @@ public sealed class OpenRgbService : IDisposable
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
-    private async Task<bool> TryConnectClientAsync(string host, int port)
+    private async Task ConnectInternalAsync(int port)
+    {
+        SetState(OpenRgbConnectionState.Connecting, "Connecting…");
+
+        // Try attaching to an already-running instance first.
+        if (await TryConnectAsync(port)) return;
+
+        // Launch our bundled copy.
+        if (!LaunchServer(port))
+        {
+            SetState(OpenRgbConnectionState.Error, "Failed to launch OpenRGB server");
+            return;
+        }
+
+        // Give it up to 6 s to accept connections.
+        for (int i = 0; i < 12; i++)
+        {
+            await Task.Delay(500);
+            if (await TryConnectAsync(port)) return;
+        }
+
+        SetState(OpenRgbConnectionState.Error, "OpenRGB server started but did not respond");
+    }
+
+    private async Task<bool> TryConnectAsync(int port)
     {
         try
         {
             DisposeClient();
-            _client = new OpenRgbClient(host, port, "Flow", autoConnect: false);
+            _client = new OpenRgbClient("localhost", port, "Flow", autoConnect: false);
             await Task.Run(() => _client.Connect());
             var devices = await Task.Run(() => _client.GetAllControllerData());
             Devices = devices;
             SetState(OpenRgbConnectionState.Connected,
-                     $"Connected — {Devices.Count} device{(Devices.Count != 1 ? "s" : "")}");
+                $"Connected — {Devices.Count} device{(Devices.Count != 1 ? "s" : "")}");
             return true;
         }
         catch
@@ -141,22 +117,24 @@ public sealed class OpenRgbService : IDisposable
         }
     }
 
-    private void LaunchServer(string exePath, int port)
+    private bool LaunchServer(int port)
     {
         try
         {
-            _managedProcess = new Process
+            _serverProcess = new Process
             {
-                StartInfo = new ProcessStartInfo(exePath, $"--server --server-port {port} --noGui")
+                StartInfo = new ProcessStartInfo(
+                    Downloader.ExePath,
+                    $"--server --server-port {port} --noGui")
                 {
                     UseShellExecute = false,
                     CreateNoWindow  = true,
                     WindowStyle     = ProcessWindowStyle.Hidden,
                 }
             };
-            _managedProcess.Start();
+            return _serverProcess.Start();
         }
-        catch { /* will surface as timeout */ }
+        catch { return false; }
     }
 
     private void DisposeClient()
@@ -172,7 +150,7 @@ public sealed class OpenRgbService : IDisposable
         StateChanged?.Invoke();
     }
 
-    private static RgbColor ToRgbColor(WpfColor c) => new(c.R, c.G, c.B);
+    private static RgbColor ToRgb(WpfColor c) => new(c.R, c.G, c.B);
 
     public void Dispose()
     {
@@ -181,9 +159,9 @@ public sealed class OpenRgbService : IDisposable
         DisposeClient();
         try
         {
-            if (_managedProcess is { HasExited: false })
-                _managedProcess.Kill();
-            _managedProcess?.Dispose();
+            if (_serverProcess is { HasExited: false })
+                _serverProcess.Kill();
+            _serverProcess?.Dispose();
         }
         catch { }
     }

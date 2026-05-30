@@ -315,9 +315,10 @@ public partial class MainWindow : Window
         // Wire hardware monitor panel live updates
         InitHardwarePanel();
 
-        // Wire OpenRGB panel
+        // Wire OpenRGB panel and silently start server if already installed
         _openRgbVm = new OpenRgbViewModel();
         OpenRgbPanel.DataContext = _openRgbVm;
+        _ = _openRgbVm.InitAsync();
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
