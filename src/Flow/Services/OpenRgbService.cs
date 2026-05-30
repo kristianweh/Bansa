@@ -96,8 +96,10 @@ public sealed class OpenRgbService : IDisposable
             // Fail fast if the process already exited (crash / missing dependency)
             if (_serverProcess is { HasExited: true })
             {
+                var log = LastLaunchLog.Trim();
+                var detail = string.IsNullOrEmpty(log) ? "" : $"\n{log}";
                 SetState(OpenRgbConnectionState.Error,
-                    $"OpenRGB exited unexpectedly (code {_serverProcess.ExitCode})");
+                    $"OpenRGB exited (code {_serverProcess.ExitCode}){detail}");
                 return;
             }
 
@@ -127,8 +129,12 @@ public sealed class OpenRgbService : IDisposable
         }
     }
 
+    // Captured output from the OpenRGB process for diagnostics
+    public string LastLaunchLog { get; private set; } = "";
+
     private bool LaunchServer(int port)
     {
+        LastLaunchLog = "";
         try
         {
             _serverProcess = new Process
@@ -137,17 +143,28 @@ public sealed class OpenRgbService : IDisposable
                     Downloader.ExePath,
                     $"--server --server-port {port} --noGui")
                 {
-                    // UseShellExecute = true mimics the user double-clicking the exe:
-                    // - avoids inheriting Flow's elevated admin token (which causes
-                    //   OpenRGB to attempt driver installs and crash)
-                    // - avoids CREATE_NO_WINDOW which breaks Qt's message-loop init
-                    // - --noGui prevents any visible window from appearing
-                    UseShellExecute  = true,
-                    WindowStyle      = ProcessWindowStyle.Hidden,
-                    WorkingDirectory = Downloader.InstallDir,
-                }
+                    UseShellExecute        = false,
+                    WorkingDirectory       = Downloader.InstallDir,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError  = true,
+                    // Do NOT set CreateNoWindow — it's a console-app flag that
+                    // corrupts Qt's message-loop init for GUI applications.
+                },
+                EnableRaisingEvents = true,
             };
-            return _serverProcess.Start();
+
+            var log = new System.Text.StringBuilder();
+            _serverProcess.OutputDataReceived += (_, e) => { if (e.Data != null) log.AppendLine(e.Data); };
+            _serverProcess.ErrorDataReceived  += (_, e) => { if (e.Data != null) log.AppendLine(e.Data); };
+            _serverProcess.Exited             += (_, _) => LastLaunchLog = log.ToString();
+
+            bool started = _serverProcess.Start();
+            if (started)
+            {
+                _serverProcess.BeginOutputReadLine();
+                _serverProcess.BeginErrorReadLine();
+            }
+            return started;
         }
         catch { return false; }
     }

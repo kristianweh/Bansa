@@ -89,6 +89,27 @@ public partial class MainWindow : Window
     // Global hotkey (Ctrl+Shift+<key>)
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    // Win32 window-style helpers — needed to keep WS_THICKFRAME|WS_CAPTION
+    // intact (some WindowChrome configs strip them) so FancyZones can snap
+    [DllImport("user32.dll")] private static extern int  GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] private static extern int  SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    private const int GWL_STYLE    = -16;
+    private const int WS_CAPTION   = 0x00C00000;
+    private const int WS_THICKFRAME= 0x00040000;
+
+    // UIPI message filter — allows lower-integrity processes (ShareX, FancyZones)
+    // to send window-management messages to this elevated window
+    [DllImport("user32.dll")] private static extern bool ChangeWindowMessageFilterEx(
+        IntPtr hWnd, uint msg, uint action, IntPtr pChangeFilterStruct);
+    private const uint MSGFLT_ALLOW  = 1;
+    private const uint WM_LBUTTONDOWN   = 0x0201;
+    private const uint WM_LBUTTONUP     = 0x0202;
+    private const uint WM_MOUSEMOVE     = 0x0200;
+    private const uint WM_MOVING        = 0x0216;
+    private const uint WM_ENTERSIZEMOVE = 0x0231;
+    private const uint WM_EXITSIZEMOVE  = 0x0232;
+    private const uint WM_SIZING        = 0x0214;
     private const int    _hotKeyId    = 9001;
     private const uint   MOD_CONTROL  = 0x0002;
     private const uint   MOD_SHIFT    = 0x0004;
@@ -122,6 +143,23 @@ public partial class MainWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         WindowsAccent.TryApplyMica(hwnd, dark: ThemeManager.Current == AppTheme.Dark);
         ThemeManager.ThemeChanged += t => WindowsAccent.TryApplyMica(hwnd, t == AppTheme.Dark);
+
+        // Ensure WS_CAPTION | WS_THICKFRAME are present.
+        // WindowChrome can strip these on some WPF versions; FancyZones requires
+        // both to detect the window as moveable and show snap zones.
+        int style = GetWindowLong(hwnd, GWL_STYLE);
+        SetWindowLong(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME);
+
+        // UIPI fix: allow lower-integrity processes (ShareX, FancyZones running
+        // as a standard user) to deliver window-management messages to this
+        // elevated window.  Without this, hooks in non-elevated apps are silently
+        // blocked when Flow is in the foreground.
+        foreach (var msg in new uint[]
+            { WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+              WM_MOVING, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_SIZING })
+        {
+            ChangeWindowMessageFilterEx(hwnd, msg, MSGFLT_ALLOW, IntPtr.Zero);
+        }
 
         // HotkeyVirtualKey == 0 means the user explicitly cleared the hotkey.
         // Default in FlowSettings is 0x46 ('F'), so new users get Ctrl+Shift+F automatically.
