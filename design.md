@@ -1,25 +1,25 @@
-# Flow — Design Notes
+﻿# Bansa — Design Notes
 
-**Flow** — a non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows.
+**Bansa** — a non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows.
 
 ## Design principles
 
 1. **Use Windows' own machinery, never replace it.** Every "action" we take maps to a built-in Windows feature (Defender Firewall rule, QoS Policy, ETW session). We never install kernel drivers, never modify system files, never run anything as SYSTEM.
-2. **Everything has an undo.** Each change we make is tagged with a `Flow-` prefix so we can list and remove only our own changes. A single "Clean up & remove all Flow changes" button restores the system to its pre-Flow state.
+2. **Everything has an undo.** Each change we make is tagged with a `Bansa-` prefix so we can list and remove only our own changes. A single "Clean up & remove all Bansa changes" button restores the system to its pre-Bansa state.
 3. **One executable, one folder.** No installer required. Uninstall = delete the folder + click cleanup.
-4. **Admin only when running.** We don't install a service. Flow asks for admin elevation when launched, does its work, and exits.
+4. **Admin only when running.** We don't install a service. Bansa asks for admin elevation when launched, does its work, and exits.
 
 ## What we touch on the system (and how we reverse it)
 
 | Action | Windows feature used | Where it lives | How we reverse it |
 |---|---|---|---|
-| Block an app | Defender Firewall rule (`New-NetFirewallRule`) | Windows Firewall config | `Remove-NetFirewallRule -DisplayName "Flow-*"` |
-| Limit an app's bandwidth | QoS Policy (`New-NetQosPolicy`) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` | `Remove-NetQosPolicy -Name "Flow-*"` |
+| Block an app | Defender Firewall rule (`New-NetFirewallRule`) | Windows Firewall config | `Remove-NetFirewallRule -DisplayName "Bansa-*"` |
+| Limit an app's bandwidth | QoS Policy (`New-NetQosPolicy`) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` | `Remove-NetQosPolicy -Name "Bansa-*"` |
 | Prioritize game traffic | QoS Policy with DSCP value | Same as above | Same as above |
-| Read process bandwidth | ETW kernel session (read-only) | Memory only | Session ends when Flow exits |
+| Read process bandwidth | ETW kernel session (read-only) | Memory only | Session ends when Bansa exits |
 | Read active connections | `GetExtendedTcpTable` / `GetExtendedUdpTable` | Read-only API call | No state created |
-| Store history | SQLite database | `%LocalAppData%\Flow\flow.db` | Delete the folder |
-| App settings | JSON file | `%LocalAppData%\Flow\settings.json` | Delete the folder |
+| Store history | SQLite database | `%LocalAppData%\Bansa\Bansa.db` | Delete the folder |
+| App settings | JSON file | `%LocalAppData%\Bansa\settings.json` | Delete the folder |
 
 That's the complete list. Nothing else gets written to disk, the registry, or the network stack.
 
@@ -27,7 +27,7 @@ That's the complete list. Nothing else gets written to disk, the registry, or th
 
 ```
 +--------------------------+
-|        Flow.exe          |   single WPF app, admin elevated
+|        Bansa.exe          |   single WPF app, admin elevated
 +--------------------------+
 |  UI (WPF MVVM)           |
 |  - ProcessListView       |
@@ -69,7 +69,7 @@ No background service. No driver. No IPC layer needed (everything runs in one pr
 - [ ] Right-click → Remove limits / unblock
 - [ ] History tab with date-range chart per app
 - [ ] Game Mode preset: detect a configured game, demote everything else
-- [ ] Settings tab with one-click "Clean up & remove all Flow changes"
+- [ ] Settings tab with one-click "Clean up & remove all Bansa changes"
 - [ ] Tray icon with current totals
 
 ## Out of scope for v1

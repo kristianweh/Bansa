@@ -1,0 +1,1005 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Data;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Bansa.Models;
+using Bansa.Services;
+
+namespace Bansa.ViewModels;
+
+public partial class MainViewModel : ObservableObject, IDisposable
+{
+    private readonly NetworkMonitor _monitor = new();
+    private readonly HistoryStore _history = new();
+    // Initialized in constructor (after _monitor) — DownloadThrottler holds a reference
+    // to NetworkMonitor so its 100 ms InnerTick can read raw byte counters directly.
+    private readonly DownloadThrottler _downloadThrottler;
+    private PingMonitor _ping;                                      // non-readonly: can be replaced when target changes
+    private readonly RateHistory _rateHistory = new(capacity: 60);
+
+    // Per-tick app snapshots, in lockstep with _rateHistory.
+    // Each slot holds the top-5 active apps visible at that moment (or null if idle).
+    // Includes ImagePath so the crosshair tooltip can show app icons.
+    private readonly (string Name, string ImagePath, long DownBps, long UpBps)[]?[] _appAtTick
+        = new (string, string, long, long)[]?[60];
+    private int _appAtTickHead;
+    private int _appAtTickCount;
+    private int _hourlyRefreshCounter;                              // throttle hourly DB queries
+    // Set when an app transitions zero-traffic → active this tick so we do a targeted
+    // filter Refresh() to make it visible. Avoids the expensive unconditional Refresh().
+    private bool _needsFilterRefresh;
+    private readonly Dictionary<string, AppRowViewModel> _rowsByName =
+        new(StringComparer.OrdinalIgnoreCase);
+    // Track which image paths / names have already had their saved limits restored (once per session)
+    private readonly HashSet<string> _restoredLimitPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _restoredLimitNames = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime _lastRollup = DateTime.UtcNow;
+
+    // Today's usage — refreshed from the history DB every ~10 s
+    private long _todayBytesIn;
+    private long _todayBytesOut;
+    private int  _todayRefreshCounter;
+
+    public ObservableCollection<AppRowViewModel> Apps { get; } = new();
+    public ICollectionView AppsView { get; }
+
+    [ObservableProperty] private string statusText = "Starting…";
+    [ObservableProperty] private long totalDownBps;
+    [ObservableProperty] private long totalUpBps;
+    [ObservableProperty] private string filterText = "";
+    [ObservableProperty] private double hideBelowKBps;
+    [ObservableProperty] private bool isDarkTheme;
+    [ObservableProperty] private int pingMs = -1;
+    [ObservableProperty] private string pingStatus = "—";
+    [ObservableProperty] private bool useBitsUnit;
+    [ObservableProperty] private int trayIconSize;
+    [ObservableProperty] private bool useWindowsAccent;
+    [ObservableProperty] private int globalUploadCapKBs;
+    [ObservableProperty] private bool isGamingModeActive;
+    [ObservableProperty] private string gamingModeTargetName = "";
+    [ObservableProperty] private bool showFloatingGraph;
+    [ObservableProperty] private AppRowViewModel? selectedApp;
+    [ObservableProperty] private bool hideLocalOnlyApps;
+    /// <summary>
+    /// Non-empty when the QoS Packet Scheduler is not bound to an active network adapter.
+    /// Shown as an actionable warning banner in the Global Upload Cap / Gaming Mode settings card.
+    /// Empty string = QoS is healthy (or no global cap is configured).
+    /// </summary>
+    [ObservableProperty] private string qosWarning = "";
+
+    public bool QosWarningVisible => !string.IsNullOrEmpty(QosWarning);
+    partial void OnQosWarningChanged(string value) => OnPropertyChanged(nameof(QosWarningVisible));
+
+    public string TotalDownText  => Format.Rate(TotalDownBps);
+    public string TotalUpText    => Format.Rate(TotalUpBps);
+    public string TodayDownText  => _todayBytesIn  > 0 ? Format.Bytes(_todayBytesIn)  : "—";
+    public string TodayUpText    => _todayBytesOut > 0 ? Format.Bytes(_todayBytesOut) : "—";
+
+    /// <summary>
+    /// User-defined label for the current ping target, or the raw target string if no label set.
+    /// Shown in the sidebar ping card and tray popup header.
+    /// </summary>
+    public string PingDisplayLabel =>
+        App.Settings.PingTargetLabels.TryGetValue(App.Settings.PingTarget, out var lbl) && !string.IsNullOrEmpty(lbl)
+            ? lbl
+            : App.Settings.PingTarget;
+
+    /// <summary>Call after saving or clearing a ping label to push the updated text to the sidebar.</summary>
+    public void NotifyPingDisplayLabel() => OnPropertyChanged(nameof(PingDisplayLabel));
+    public string PingText => PingMs < 0 ? "— ms" : $"{PingMs} ms";
+    public string ThresholdLabel => HideBelowKBps <= 0
+        ? "Show all apps"
+        : $"Hide apps below {HideBelowKBps:0.#} KB/s";
+
+    public IReadOnlyList<(long Down, long Up)> History => _rateHistory.Snapshot();
+
+    /// <summary>
+    /// Returns per-tick app snapshots in the same chronological order as
+    /// <see cref="History"/> (oldest first, newest last).  Each element is the
+    /// top-5 active apps at that tick, or <c>null</c> when no apps were active.
+    /// Must be called on the UI thread (written there, read there).
+    /// </summary>
+    public IReadOnlyList<(string Name, string ImagePath, long DownBps, long UpBps)[]?> AppTickSnapshot()
+    {
+        var result = new List<(string, string, long, long)[]?>(_appAtTickCount);
+        int start = _appAtTickCount < 60 ? 0 : _appAtTickHead;
+        for (int i = 0; i < _appAtTickCount; i++)
+            result.Add(_appAtTick[(start + i) % 60]);
+        return result;
+    }
+
+    public event Action<long, long, int, IReadOnlyList<(long Down, long Up)>, IEnumerable<AppRowViewModel>>? TraySnapshot;
+
+    public MainViewModel()
+    {
+        _downloadThrottler = new DownloadThrottler(_monitor);
+
+        AppsView = CollectionViewSource.GetDefaultView(Apps);
+        AppsView.Filter = AppFilter;
+        // SortPriority is always the primary key (pinned=0, modified=1, normal=2).
+        // Secondary sort defaults to highest download — user column-clicks add/replace secondary.
+        AppsView.SortDescriptions.Add(new SortDescription(nameof(AppRowViewModel.SortPriority), ListSortDirection.Ascending));
+        AppsView.SortDescriptions.Add(new SortDescription(nameof(AppRowViewModel.BytesInPerSec), ListSortDirection.Descending));
+
+        // IsLiveSorting: when BytesInPerSec changes, the view moves the row in-place.
+        // This sends CollectionChanged(Move) — cheap, no row containers are recreated.
+        // IsLiveFiltering is intentionally OFF: WPF has a bug where items filtered-out
+        // immediately on insertion (rate=0 first sample) are not re-evaluated when their
+        // rate later rises.  We handle that edge case with a targeted Refresh() only when
+        // an app transitions from zero-traffic to active (see OnSampleReady).
+        var lv = (System.Windows.Data.ListCollectionView)AppsView;
+        lv.IsLiveSorting = true;
+        lv.LiveSortingProperties.Add(nameof(AppRowViewModel.SortPriority));
+        lv.LiveSortingProperties.Add(nameof(AppRowViewModel.BytesInPerSec));
+        lv.LiveSortingProperties.Add(nameof(AppRowViewModel.BytesOutPerSec));
+
+        IsDarkTheme = ThemeManager.Current == AppTheme.Dark;
+        HideBelowKBps = App.Settings.HideBelowKBps;
+        UseBitsUnit = string.Equals(App.Settings.RateUnit, "Bits", StringComparison.OrdinalIgnoreCase);
+        TrayIconSize = App.Settings.TrayIconSize;
+        UseWindowsAccent = App.Settings.UseWindowsAccent;
+        GlobalUploadCapKBs = App.Settings.GlobalUploadCapKBs;
+        IsGamingModeActive = App.Settings.GamingModeActive;
+        ShowFloatingGraph  = App.Settings.ShowFloatingGraph;
+        HideLocalOnlyApps  = App.Settings.HideLocalOnlyApps;
+
+        _ping = new PingMonitor(App.Settings.PingTarget);
+        _ping.Updated += OnPingUpdated;
+        _ping.Start();
+
+        // Re-apply all saved OS rules immediately — don't wait for ETW to detect each process.
+        // QoS and firewall rules work by filename, so they can be activated before the game starts.
+        _ = Task.Run(EagerlyReapplySavedRulesAsync);
+
+        _monitor.SampleReady += OnSampleReady;
+        try
+        {
+            _monitor.Start();
+            StatusText = "Monitoring active — per-app traffic via ETW.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "Monitor failed to start: " + ex.Message;
+        }
+
+        // QoS is only used for the global upload cap (Gaming Mode).
+        // Per-app limits now use outbound firewall rules and don't need QoS at all.
+        // Run a silent background diagnosis; result goes to the Settings banner, NOT the status bar.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (App.Settings.GlobalUploadCapKBs > 0 || App.Settings.GamingModeActive)
+                {
+                    var problem = await QosManager.DiagnosePrerequisitesAsync();
+                    Application.Current?.Dispatcher.InvokeAsync(() => QosWarning = problem ?? "");
+                }
+            }
+            catch { }
+
+            // Re-apply global upload cap if gaming mode is persisted as active
+            if (App.Settings.GamingModeActive && App.Settings.GlobalUploadCapKBs > 0)
+            {
+                try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); }
+                catch { }
+            }
+        });
+    }
+
+    partial void OnTotalDownBpsChanged(long value) => OnPropertyChanged(nameof(TotalDownText));
+    partial void OnTotalUpBpsChanged(long value) => OnPropertyChanged(nameof(TotalUpText));
+    partial void OnPingMsChanged(int value) => OnPropertyChanged(nameof(PingText));
+    partial void OnFilterTextChanged(string value) => AppsView.Refresh();
+    partial void OnHideBelowKBpsChanged(double value)
+    {
+        App.Settings.HideBelowKBps = value;
+        SettingsManager.Save(App.Settings);
+        OnPropertyChanged(nameof(ThresholdLabel));
+        AppsView.Refresh();
+    }
+
+    partial void OnIsDarkThemeChanged(bool value)
+    {
+        ThemeManager.Apply(value ? AppTheme.Dark : AppTheme.Light);
+        App.Settings.Theme = value ? "Dark" : "Light";
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnUseBitsUnitChanged(bool value)
+    {
+        App.Settings.RateUnit = value ? "Bits" : "Bytes";
+        SettingsManager.Save(App.Settings);
+        OnPropertyChanged(nameof(TotalDownText));
+        OnPropertyChanged(nameof(TotalUpText));
+        foreach (var a in Apps) a.RefreshUnits();
+    }
+
+    partial void OnTrayIconSizeChanged(int value)
+    {
+        App.Settings.TrayIconSize = value;
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnGlobalUploadCapKBsChanged(int value)
+    {
+        App.Settings.GlobalUploadCapKBs = value;
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnIsGamingModeActiveChanged(bool value)
+    {
+        App.Settings.GamingModeActive = value;
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnShowFloatingGraphChanged(bool value)
+    {
+        App.Settings.ShowFloatingGraph = value;
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnHideLocalOnlyAppsChanged(bool value)
+    {
+        App.Settings.HideLocalOnlyApps = value;
+        SettingsManager.Save(App.Settings);
+        AppsView.Refresh();
+    }
+
+    partial void OnUseWindowsAccentChanged(bool value)
+    {
+        App.Settings.UseWindowsAccent = value;
+        SettingsManager.Save(App.Settings);
+
+        if (value)
+        {
+            var c = WindowsAccent.Get();
+            var brush = new System.Windows.Media.SolidColorBrush(c);
+            if (brush.CanFreeze) brush.Freeze();
+            Application.Current.Resources["AccentBrush"] = brush;
+        }
+        else
+        {
+            // Reset to theme-default by reapplying the active theme
+            ThemeManager.Apply(ThemeManager.Current);
+        }
+    }
+
+    public void SetDownColor(string hex)
+    {
+        App.Settings.DownColorHex = hex;
+        SettingsManager.Save(App.Settings);
+        UpdateChartBrush("ChartDownBrush", hex);
+    }
+
+    public void SetUpColor(string hex)
+    {
+        App.Settings.UpColorHex = hex;
+        SettingsManager.Save(App.Settings);
+        UpdateChartBrush("ChartUpBrush", hex);
+    }
+
+    public void SetTrayDownColor(string hex) { App.Settings.TrayDownColorHex = hex; SettingsManager.Save(App.Settings); }
+    public void SetTrayUpColor(string hex)   { App.Settings.TrayUpColorHex   = hex; SettingsManager.Save(App.Settings); }
+
+    private static void UpdateChartBrush(string resourceKey, string hex)
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            try
+            {
+                var c = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+                var brush = new System.Windows.Media.SolidColorBrush(c);
+                if (brush.CanFreeze) brush.Freeze();
+                Application.Current.Resources[resourceKey] = brush;
+            }
+            catch { }
+        });
+    }
+
+    private bool AppFilter(object obj)
+    {
+        if (obj is not AppRowViewModel a) return false;
+        // Pinned / blocked / limited / prioritised apps are always visible regardless of filter or threshold
+        if (a.SortPriority < 2) return true;
+        if (!string.IsNullOrWhiteSpace(FilterText) && !a.Name.Contains(FilterText, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (HideLocalOnlyApps && a.IsLocalOnly)
+            return false;
+        double threshold = HideBelowKBps * 1024.0;
+        if (threshold > 0 && a.BytesInPerSec < threshold && a.BytesOutPerSec < threshold)
+            return false;
+        return true;
+    }
+
+    private void OnSampleReady(IReadOnlyList<ProcessNetInfo> sample)
+    {
+        var groups = sample
+            .GroupBy(p => string.IsNullOrEmpty(p.Name) ? $"pid-{p.Pid}" : p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            long sumIn = 0, sumOut = 0;
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Batch all updates inside DeferRefresh so IsLiveSorting coalesces
+            // all per-property moves into one sort pass at the end.
+            using (((ListCollectionView)AppsView).DeferRefresh())
+            {
+                foreach (var g in groups)
+                {
+                    seenNames.Add(g.Key);
+
+                    _rowsByName.TryGetValue(g.Key, out var existingRow);
+                    bool isNew = existingRow is null;
+                    AppRowViewModel row;
+                    if (isNew)
+                    {
+                        row = new AppRowViewModel { Name = g.Key };
+                        _rowsByName[g.Key] = row;
+                        Apps.Add(row);
+                        _needsFilterRefresh = true;   // structural add always needs a re-filter
+                    }
+                    else
+                    {
+                        row = existingRow!;
+                    }
+
+                    var children = g.Select(p => new ProcessRowViewModel
+                    {
+                        Pid = p.Pid,
+                        Name = p.Name,
+                        ImagePath = p.ImagePath,
+                        BytesInPerSec = p.BytesInPerSec,
+                        BytesOutPerSec = p.BytesOutPerSec,
+                        TotalBytesIn = p.TotalBytesIn,
+                        TotalBytesOut = p.TotalBytesOut,
+                        ConnectionCount = p.Connections.Count,
+                    }).ToList();
+
+                    // Detect zero-traffic → active transition so the filter re-runs.
+                    // An app starts with rate=0 (EMA warms up on second sample) and
+                    // TotalBytesIn=0 (no packets yet), making it invisible when a
+                    // KB/s threshold is set.  WPF's IsLiveFiltering won't re-evaluate
+                    // items that were filtered-out immediately on insertion, so we track
+                    // the transition here and do a targeted Refresh() after the block.
+                    bool wasInvisible = !isNew
+                        && row.BytesInPerSec  == 0 && row.BytesOutPerSec == 0
+                        && row.TotalBytesIn   == 0 && row.TotalBytesOut  == 0;
+
+                    row.UpdateFromChildren(children);
+
+                    if (wasInvisible && (row.BytesInPerSec > 0 || row.TotalBytesIn > 0 || row.TotalBytesOut > 0))
+                        _needsFilterRefresh = true;
+
+                    // Live throttle-active indicator: poll the throttler so the badge
+                    // turns amber while the block rule is actually firing (≤500 ms lag).
+                    if (row.DownloadLimitKbps > 0)
+                        row.IsThrottlingDown = _downloadThrottler.IsActivelyThrottlingDown(row.ImagePath);
+                    else if (row.IsThrottlingDown)
+                        row.IsThrottlingDown = false;
+
+                    if (row.UploadLimitKbps > 0)
+                        row.IsThrottlingUp = _downloadThrottler.IsActivelyThrottlingUp(row.ImagePath);
+                    else if (row.IsThrottlingUp)
+                        row.IsThrottlingUp = false;
+
+                    // Classify local-only: all observed connections go to loopback / RFC-1918
+                    var allConns = g.SelectMany(p => p.Connections).ToList();
+                    row.IsLocalOnly = allConns.Count > 0
+                        && allConns.All(c => IsLocalAddress(c.RemoteAddress));
+
+                    // UDP detection: flag apps that have active external UDP sockets.
+                    // Upload limits on UDP apps drop packets instead of smoothly pacing them —
+                    // SetLimitWindow uses this to show a warning before the user applies the limit.
+                    row.HasUdpConnections = allConns.Any(c =>
+                        c.Protocol == "UDP" && !IsLocalAddress(c.RemoteAddress));
+
+                    // Restore saved limits the first time we see an app's image path
+                    if (!string.IsNullOrEmpty(row.ImagePath) &&
+                        _restoredLimitPaths.Add(row.ImagePath))
+                    {
+                        RestoreSavedLimits(row);
+                    }
+
+                    // Name-based restoration for protected processes with no readable image path
+                    if (string.IsNullOrEmpty(row.ImagePath) &&
+                        _restoredLimitNames.Add(row.Name) &&
+                        App.Settings.AppHighPriorityNames.Contains(row.Name))
+                    {
+                        row.Dscp = 46;
+                        var syntheticExe = row.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                            ? row.Name : row.Name + ".exe";
+                        _ = QosManager.SetDscpAsync(syntheticExe, 46);
+                    }
+
+                    sumIn += row.BytesInPerSec;
+                    sumOut += row.BytesOutPerSec;
+                }
+
+                var deadNames = _rowsByName.Keys.Where(k => !seenNames.Contains(k)).ToList();
+                foreach (var name in deadNames)
+                {
+                    Apps.Remove(_rowsByName[name]);
+                    _rowsByName.Remove(name);
+                    _needsFilterRefresh = true;
+                }
+            } // DeferRefresh ends — IsLiveSorting applies queued row-moves in one pass
+
+            // Only do a full Refresh() when filter visibility actually changed
+            // (new app, app went active from zero, or app removed). This avoids the
+            // CollectionChanged(Reset) that destroys and recreates all row containers.
+            if (_needsFilterRefresh)
+            {
+                ((System.Windows.Data.ListCollectionView)AppsView).Refresh();
+                _needsFilterRefresh = false;
+            }
+
+            TotalDownBps = sumIn;
+            TotalUpBps = sumOut;
+            _rateHistory.Push(sumIn, sumOut);
+
+            // Capture top-5 visible apps for the crosshair tooltip history.
+            // AppsView is already sorted by BytesInPerSec DESC, so Take(5) gives the right order.
+            var topApps = AppsView.Cast<AppRowViewModel>()
+                .Where(a => a.BytesInPerSec > 0 || a.BytesOutPerSec > 0)
+                .Take(5)
+                .Select(a => (a.Name, a.ImagePath, a.BytesInPerSec, a.BytesOutPerSec))
+                .ToArray();
+            _appAtTick[_appAtTickHead] = topApps.Length > 0 ? topApps : null;
+            _appAtTickHead = (_appAtTickHead + 1) % 60;
+            if (_appAtTickCount < 60) _appAtTickCount++;
+
+            // Refresh today's usage from the history DB every ~10 s (20 ticks × 500 ms)
+            _todayRefreshCounter++;
+            if (_todayRefreshCounter % 20 == 0 || _todayRefreshCounter == 1)
+                _ = RefreshTodayUsageAsync();
+
+            // Filter hysteresis: when a speed threshold is active, re-evaluate the filter
+            // every ~5 s so apps that slow down below the threshold eventually disappear,
+            // without re-running the filter on every tick (which would cause visual flickering).
+            if (HideBelowKBps > 0 && _todayRefreshCounter % 10 == 5)
+                _needsFilterRefresh = true;
+
+            try
+            {
+                // Pass the *filtered + sorted* view so tray popup and floating graph mirror
+                // exactly what the main window shows (KB/s threshold, text filter, Hide local, etc.)
+                TraySnapshot?.Invoke(sumIn, sumOut, PingMs, _rateHistory.Snapshot(),
+                    AppsView.Cast<AppRowViewModel>().ToList());
+            }
+            catch { }
+
+            // Refresh hourly usage for row tooltips every ~30 s (60 samples × 500 ms)
+            _hourlyRefreshCounter++;
+            if (_hourlyRefreshCounter % 60 == 0)
+                _ = RefreshHourlyUsageAsync();
+        });
+
+        try { _history.RecordSample(sample); } catch { }
+
+        if ((DateTime.UtcNow - _lastRollup).TotalMinutes > 30)
+        {
+            _lastRollup = DateTime.UtcNow;
+            try { _history.Rollup(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Re-apply every saved rule at startup without waiting for ETW.
+    /// QoS/firewall rules are keyed by filename, so no running process is needed.
+    /// </summary>
+    private async Task EagerlyReapplySavedRulesAsync()
+    {
+        var s = App.Settings;
+
+        foreach (var path in s.AppBlockedPaths.ToList())
+            try { await FirewallManager.BlockAppAsync(path); } catch { }
+
+        // Upload and download throttle limits use outbound/inbound firewall rules —
+        // applied immediately to existing connections, unlike QoS which only
+        // classifies new sockets at creation time.
+        foreach (var kv in s.AppUploadLimitsKBs.ToList())
+            if (kv.Value > 0) _downloadThrottler.SetUploadLimit(kv.Key, kv.Value);
+
+        foreach (var kv in s.AppDownloadLimitsKBs.ToList())
+            if (kv.Value > 0) _downloadThrottler.SetDownloadLimit(kv.Key, kv.Value);
+
+        foreach (var path in s.AppHighPriorityPaths.ToList())
+            try { await QosManager.SetDscpAsync(path, 46); } catch { }
+
+        foreach (var name in s.AppHighPriorityNames.ToList())
+        {
+            var exe = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
+            try { await QosManager.SetDscpAsync(exe, 46); } catch { }
+        }
+    }
+
+    private void RestoreSavedLimits(AppRowViewModel row)
+    {
+        var key = row.ImagePath.ToLowerInvariant();
+
+        // Restore pinned state
+        if (App.Settings.PinnedAppPaths.Any(p => string.Equals(p, key, StringComparison.OrdinalIgnoreCase)))
+            row.IsPinned = true;
+
+        // Re-apply firewall block (rules were removed on last exit)
+        if (App.Settings.AppBlockedPaths.Contains(key))
+        {
+            row.IsBlocked = true;
+            _ = FirewallManager.BlockAppAsync(row.ImagePath);
+        }
+
+        // Re-apply upload limit (outbound firewall toggle — hits existing connections immediately)
+        if (App.Settings.AppUploadLimitsKBs.TryGetValue(key, out var upKBs) && upKBs > 0)
+        {
+            row.UploadLimitKbps = upKBs;
+            _downloadThrottler.SetUploadLimit(row.ImagePath, upKBs);
+        }
+
+        // Re-apply download limit
+        if (App.Settings.AppDownloadLimitsKBs.TryGetValue(key, out var downKBs) && downKBs > 0)
+        {
+            row.DownloadLimitKbps = downKBs;
+            _downloadThrottler.SetDownloadLimit(row.ImagePath, downKBs);
+        }
+
+        // Re-apply high-priority DSCP mark
+        if (App.Settings.AppHighPriorityPaths.Contains(key))
+        {
+            row.Dscp = 46;
+            _ = QosManager.SetDscpAsync(row.ImagePath, 46);
+        }
+    }
+
+    // ── Global upload cap ────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task ApplyGlobalUploadCapAsync()
+    {
+        // Check QoS health and surface the result in the Settings banner.
+        // Do NOT block apply — the user may be troubleshooting or the diagnosis may be stale.
+        if (GlobalUploadCapKBs > 0)
+        {
+            var problem = await QosManager.DiagnosePrerequisitesAsync();
+            QosWarning = problem ?? "";
+        }
+        else
+        {
+            QosWarning = "";
+        }
+
+        var o = await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
+        StatusText = o.Success
+            ? (GlobalUploadCapKBs > 0
+                ? $"Global upload cap applied: {Format.KBps(GlobalUploadCapKBs)} — bufferbloat protection active."
+                : "Global upload cap removed.")
+            : "Failed to apply global upload cap: " + o.Detail;
+    }
+
+    [RelayCommand]
+    private async Task RefreshQosStatusAsync()
+    {
+        var problem = await QosManager.DiagnosePrerequisitesAsync();
+        QosWarning = problem ?? "";
+        StatusText = string.IsNullOrEmpty(QosWarning)
+            ? "QoS Packet Scheduler OK — global upload cap will be enforced."
+            : "QoS check: " + QosWarning;
+    }
+
+    // ── Gaming Mode ───────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task ToggleGamingModeAsync()
+    {
+        IsGamingModeActive = !IsGamingModeActive;
+        var game = SelectedApp;
+
+        if (IsGamingModeActive)
+        {
+            // 1. Apply global upload cap if configured — prevents ADSL bufferbloat
+            if (GlobalUploadCapKBs > 0)
+                await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
+
+            // 2. Mark selected game as DSCP 46 so router gives it priority over other traffic
+            if (game != null && !string.IsNullOrEmpty(game.ImagePath))
+            {
+                GamingModeTargetName = game.Name;
+                var o = await QosManager.SetDscpAsync(game.ImagePath, 46);
+                if (o.Success)
+                {
+                    game.Dscp = 46;
+                    App.Settings.AppHighPriorityPaths.Add(game.ImagePath.ToLowerInvariant());
+                    SettingsManager.Save(App.Settings);
+                    _history.LogActivity(game.Name, "priority_on", "Gaming mode – DSCP 46");
+                }
+                StatusText = GlobalUploadCapKBs > 0
+                    ? $"Gaming mode ON — {game.Name} prioritised, upload capped at {Format.KBps(GlobalUploadCapKBs)}."
+                    : $"Gaming mode ON — {game.Name} marked high-priority (configure a cap in Settings for full protection).";
+            }
+            else
+            {
+                GamingModeTargetName = "";
+                StatusText = GlobalUploadCapKBs > 0
+                    ? $"Gaming mode ON — upload capped at {Format.KBps(GlobalUploadCapKBs)}. Select a game first to mark it as high-priority."
+                    : "Gaming mode ON — select a game and set a global cap in Settings for full ADSL protection.";
+            }
+        }
+        else
+        {
+            GamingModeTargetName = "";
+            // Remove global cap when gaming mode goes off
+            if (GlobalUploadCapKBs > 0)
+                await QosManager.SetGlobalUploadCapAsync(0);
+
+            StatusText = "Gaming mode OFF — global upload cap removed.";
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleTheme() => IsDarkTheme = !IsDarkTheme;
+
+    [RelayCommand]
+    private async Task BlockAsync(AppRowViewModel? app)
+    {
+        if (app is null || string.IsNullOrEmpty(app.ImagePath)) return;
+        StatusText = $"Blocking {app.Name}…";
+        var ok = await FirewallManager.BlockAppAsync(app.ImagePath);
+        app.IsBlocked = ok;
+        if (ok)
+        {
+            App.Settings.AppBlockedPaths.Add(app.ImagePath.ToLowerInvariant());
+            SettingsManager.Save(App.Settings);
+            _history.LogActivity(app.Name, "blocked");
+        }
+        StatusText = ok ? $"Blocked {app.Name}." : $"Failed to block {app.Name}.";
+    }
+
+    [RelayCommand]
+    private async Task UnblockAsync(AppRowViewModel? app)
+    {
+        if (app is null || string.IsNullOrEmpty(app.ImagePath)) return;
+        StatusText = $"Unblocking {app.Name}…";
+        var ok = await FirewallManager.UnblockAppAsync(app.ImagePath);
+        if (ok)
+        {
+            app.IsBlocked = false;
+            App.Settings.AppBlockedPaths.Remove(app.ImagePath.ToLowerInvariant());
+            SettingsManager.Save(App.Settings);
+            _history.LogActivity(app.Name, "unblocked");
+        }
+        StatusText = ok ? $"Unblocked {app.Name}." : $"Failed to unblock {app.Name}.";
+    }
+
+    [RelayCommand]
+    private async Task ApplyLimitsAsync((AppRowViewModel app, int upKbps, int downKbps)? param)
+    {
+        if (param is null) return;
+        var (app, up, down) = param.Value;
+        if (string.IsNullOrEmpty(app.ImagePath))
+        {
+            StatusText = $"Can't set a limit on {app.Name} — Bansa can't see its executable path. (System / protected processes can't be limited.)";
+            return;
+        }
+
+        var key          = app.ImagePath.ToLowerInvariant();
+        bool clearingUp   = up   <= 0;
+        bool clearingDown = down <= 0;
+
+        if (clearingUp || clearingDown)
+        {
+            // Await removal and verify the firewall rule is actually gone before updating UI.
+            bool verified = await _downloadThrottler.ClearAndVerifyAsync(
+                app.ImagePath, clearDown: clearingDown, clearUp: clearingUp);
+
+            if (clearingUp)   { app.UploadLimitKbps   = 0; App.Settings.AppUploadLimitsKBs.Remove(key); }
+            if (clearingDown) { app.DownloadLimitKbps  = 0; App.Settings.AppDownloadLimitsKBs.Remove(key); }
+
+            // Apply any direction that still has a positive limit.
+            if (!clearingUp && up > 0)
+            {
+                _downloadThrottler.SetUploadLimit(app.ImagePath, up);
+                app.UploadLimitKbps = up;
+                App.Settings.AppUploadLimitsKBs[key] = up;
+            }
+            if (!clearingDown && down > 0)
+            {
+                _downloadThrottler.SetDownloadLimit(app.ImagePath, down);
+                app.DownloadLimitKbps = down;
+                App.Settings.AppDownloadLimitsKBs[key] = down;
+            }
+
+            SettingsManager.Save(App.Settings);
+
+            if (clearingUp && clearingDown)
+            {
+                _history.LogActivity(app.Name, "limit_cleared");
+                StatusText = verified
+                    ? $"Limits cleared: {app.Name}."
+                    : $"Limits cleared for {app.Name} but a firewall rule may still be active — run Cleanup in Settings if throttling persists.";
+            }
+            else
+            {
+                _history.LogActivity(app.Name, "limit_set", $"Up {Format.KBps(up)}  Down {Format.KBps(down)}");
+                StatusText = verified
+                    ? $"Limits set: {app.Name}  ↑ {Format.KBps(up)}  ↓ {Format.KBps(down)}"
+                    : $"Limits set: {app.Name}  ↑ {Format.KBps(up)}  ↓ {Format.KBps(down)}  — warning: an old firewall rule may still be active, run Cleanup if throttling persists.";
+            }
+        }
+        else
+        {
+            // Upload: outbound firewall toggle — applies to existing connections immediately,
+            // unlike QoS which only classifies new sockets at creation time.
+            _downloadThrottler.SetUploadLimit(app.ImagePath, up);
+            app.UploadLimitKbps = up;
+            App.Settings.AppUploadLimitsKBs[key] = up;
+
+            _downloadThrottler.SetDownloadLimit(app.ImagePath, down);
+            app.DownloadLimitKbps = down;
+            App.Settings.AppDownloadLimitsKBs[key] = down;
+
+            SettingsManager.Save(App.Settings);
+            _history.LogActivity(app.Name, "limit_set", $"Up {Format.KBps(up)}  Down {Format.KBps(down)}");
+
+            // Read back from throttler to confirm in-memory state matches the request.
+            bool setOk = _downloadThrottler.GetDownloadLimit(app.ImagePath) == down
+                      && _downloadThrottler.GetUploadLimit(app.ImagePath)   == up;
+            StatusText = setOk
+                ? $"Limits set: {app.Name}  ↑ {Format.KBps(up)}  ↓ {Format.KBps(down)}"
+                : $"Warning: limits may not have applied for {app.Name} — run Cleanup in Settings if throttling persists.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task MarkAsGameAsync(AppRowViewModel? app)
+    {
+        if (app is null) return;
+
+        // For protected processes (Vanguard, etc.) ImagePath is empty — synthesize the exe name
+        bool nameOnly = string.IsNullOrEmpty(app.ImagePath);
+        string effectivePath = nameOnly
+            ? (app.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? app.Name : app.Name + ".exe")
+            : app.ImagePath;
+
+        var o = await QosManager.SetDscpAsync(effectivePath, 46);
+        if (o.Success)
+        {
+            app.Dscp = 46;
+            if (nameOnly)
+                App.Settings.AppHighPriorityNames.Add(app.Name);
+            else
+                App.Settings.AppHighPriorityPaths.Add(app.ImagePath.ToLowerInvariant());
+            SettingsManager.Save(App.Settings);
+            _history.LogActivity(app.Name, "priority_on", "DSCP 46");
+            StatusText = $"Marked {app.Name} as high-priority (DSCP 46).";
+        }
+        else
+        {
+            StatusText = $"Failed to set priority on {app.Name}: {o.Detail}";
+            MessageBox.Show(
+                $"Setting high-priority on '{app.Name}' failed.\n\n{o.Detail}\n\n" +
+                "Ensure Bansa is running as Administrator and the QoS Packet Scheduler is enabled on your adapter " +
+                "(Network Connections → adapter Properties → tick 'QoS Packet Scheduler').",
+                "Bansa — Priority failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    [RelayCommand]
+    private async Task UnmarkGameAsync(AppRowViewModel? app)
+    {
+        if (app is null) return;
+
+        bool nameOnly = string.IsNullOrEmpty(app.ImagePath);
+        string effectivePath = nameOnly
+            ? (app.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? app.Name : app.Name + ".exe")
+            : app.ImagePath;
+
+        var o = await QosManager.SetDscpAsync(effectivePath, 0);
+        if (o.Success)
+        {
+            app.Dscp = 0;
+            if (nameOnly)
+                App.Settings.AppHighPriorityNames.Remove(app.Name);
+            else
+                App.Settings.AppHighPriorityPaths.Remove(app.ImagePath.ToLowerInvariant());
+            SettingsManager.Save(App.Settings);
+            _history.LogActivity(app.Name, "priority_off");
+        }
+        StatusText = o.Success ? $"Cleared priority on {app.Name}." : $"Failed: {o.Detail}";
+    }
+
+    [RelayCommand]
+    private void PinApp(AppRowViewModel? app)
+    {
+        if (app is null) return;
+        app.IsPinned = true;
+        if (!string.IsNullOrEmpty(app.ImagePath))
+        {
+            var key = app.ImagePath.ToLowerInvariant();
+            if (!App.Settings.PinnedAppPaths.Any(p => string.Equals(p, key, StringComparison.OrdinalIgnoreCase)))
+                App.Settings.PinnedAppPaths.Add(key);
+            SettingsManager.Save(App.Settings);
+        }
+        StatusText = $"Pinned {app.Name} to top.";
+    }
+
+    [RelayCommand]
+    private void UnpinApp(AppRowViewModel? app)
+    {
+        if (app is null) return;
+        app.IsPinned = false;
+        if (!string.IsNullOrEmpty(app.ImagePath))
+        {
+            var key = app.ImagePath.ToLowerInvariant();
+            App.Settings.PinnedAppPaths.RemoveAll(p => string.Equals(p, key, StringComparison.OrdinalIgnoreCase));
+            SettingsManager.Save(App.Settings);
+        }
+        StatusText = $"Unpinned {app.Name}.";
+    }
+
+    [RelayCommand]
+    private async Task RunCleanupAsync()
+    {
+        var confirm = MessageBox.Show(
+            "This will remove ALL Bansa firewall rules and QoS policies from your system.\n\n" +
+            "Your history database in %LocalAppData%\\Bansa\\ will be preserved.\n\n" +
+            "Continue?",
+            "Bansa — Cleanup",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        StatusText = "Cleaning up…";
+        var report = await CleanupManager.RunAsync(removeDataFolder: false);
+
+        foreach (var a in Apps)
+        {
+            // Clear in-memory throttler state so InnerTick doesn't re-add block rules
+            if (a.DownloadLimitKbps > 0) _downloadThrottler.SetDownloadLimit(a.ImagePath, 0);
+            if (a.UploadLimitKbps   > 0) _downloadThrottler.SetUploadLimit(a.ImagePath, 0);
+            a.IsBlocked         = false;
+            a.UploadLimitKbps   = 0;
+            a.DownloadLimitKbps = 0;
+            a.Dscp              = 0;
+        }
+        // Clear persisted rules so they aren't re-applied on next startup
+        App.Settings.AppDownloadLimitsKBs.Clear();
+        App.Settings.AppUploadLimitsKBs.Clear();
+        App.Settings.AppBlockedPaths.Clear();
+        App.Settings.AppHighPriorityPaths.Clear();
+        App.Settings.AppHighPriorityNames.Clear();
+        SettingsManager.Save(App.Settings);
+
+        StatusText = "Cleanup complete.";
+        MessageBox.Show(report.ToString(), "Bansa — Cleanup result", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // ── Local-address classification ──────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true for loopback (127.x, ::1), link-local (169.254.x), and
+    /// all RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
+    /// These addresses never leave the machine or local subnet.
+    /// </summary>
+    private static bool IsLocalAddress(string addr)
+    {
+        if (string.IsNullOrEmpty(addr)) return false;
+        if (addr == "::1" || addr == "0:0:0:0:0:0:0:1") return true;   // IPv6 loopback
+        if (addr.StartsWith("::ffff:", StringComparison.Ordinal))        // IPv4-mapped IPv6
+            addr = addr["::ffff:".Length..];
+        if (addr.StartsWith("127.")) return true;                        // IPv4 loopback
+        if (addr.StartsWith("169.254.")) return true;                    // link-local
+        if (addr.StartsWith("192.168.")) return true;                    // RFC-1918
+        if (addr.StartsWith("10.")) return true;                         // RFC-1918
+        if (addr.StartsWith("172."))                                     // RFC-1918 172.16-31.x
+        {
+            var dots = addr.AsSpan();
+            int firstDot = dots.IndexOf('.');
+            int secondDot = firstDot >= 0 ? dots[(firstDot + 1)..].IndexOf('.') + firstDot + 1 : -1;
+            if (firstDot > 0 && secondDot > firstDot &&
+                int.TryParse(dots[(firstDot + 1)..secondDot], out int oct2) &&
+                oct2 >= 16 && oct2 <= 31)
+                return true;
+        }
+        return false;
+    }
+
+    // ── Ping management ──────────────────────────────────────────────────────
+
+    private void OnPingUpdated(int ms, string status)
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            PingMs = ms;
+            PingStatus = status;
+            OnPropertyChanged(nameof(PingText));
+        });
+    }
+
+    /// <summary>Swap out the PingMonitor for a different target without restarting the app.</summary>
+    public void ChangePingTarget(string newTarget)
+    {
+        if (string.IsNullOrWhiteSpace(newTarget) ||
+            string.Equals(App.Settings.PingTarget, newTarget, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _ping.Updated -= OnPingUpdated;
+        _ping.Dispose();
+
+        App.Settings.PingTarget = newTarget;
+        SettingsManager.Save(App.Settings);
+
+        _ping = new PingMonitor(newTarget);
+        _ping.Updated += OnPingUpdated;
+        _ping.Start();
+
+        // Sidebar label may have changed (different label for the new target)
+        Application.Current?.Dispatcher.InvokeAsync(() => OnPropertyChanged(nameof(PingDisplayLabel)));
+    }
+
+    // ── Hourly usage for DataGrid row tooltips ────────────────────────────────
+
+    /// <summary>
+    /// Queries last-hour totals for every visible app and updates their HourlyDown/UpText.
+    /// Called every ~30 s from the UI-thread Dispatcher block, so await resumes on the UI thread.
+    /// Also callable from MainWindow for an immediate on-demand refresh (e.g. first load).
+    /// </summary>
+    public async Task TriggerHourlyRefreshAsync() => await RefreshHourlyUsageAsync();
+
+    private async Task RefreshTodayUsageAsync()
+    {
+        try
+        {
+            var (bytesIn, bytesOut) = await Task.Run(() => _history.GetTodayTotals());
+            _todayBytesIn  = bytesIn;
+            _todayBytesOut = bytesOut;
+            OnPropertyChanged(nameof(TodayDownText));
+            OnPropertyChanged(nameof(TodayUpText));
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private async Task RefreshHourlyUsageAsync()
+    {
+        var snapshot = Apps.ToList();
+        var from = DateTime.UtcNow.AddHours(-1);
+        var to   = DateTime.UtcNow;
+
+        foreach (var app in snapshot)
+        {
+            try
+            {
+                var name = app.Name;
+                var rows = await Task.Run(() => _history.GetAppHourly(name, from, to));
+                long bytesIn  = rows.Sum(r => r.BytesIn);
+                long bytesOut = rows.Sum(r => r.BytesOut);
+                // Back on UI thread (SynchronizationContext captured by await)
+                app.HourlyDownText = bytesIn  > 0 ? Format.Bytes(bytesIn)  : "—";
+                app.HourlyUpText   = bytesOut > 0 ? Format.Bytes(bytesOut) : "—";
+            }
+            catch { /* non-fatal — tooltip just stays stale */ }
+        }
+    }
+
+    public void Dispose()
+    {
+        _monitor.Dispose();
+        _history.Dispose();
+        _ping.Dispose();
+        _downloadThrottler.Dispose();
+
+        // ── Tear down all OS-level rules when Bansa exits ───────────────────────
+        // Limits are only active while Bansa runs; we re-apply them on next startup.
+        // Fire-and-forget is fine here — we're on the UI thread during shutdown and
+        // can't await, but the PowerShell processes will complete in the background.
+        _ = CleanupManager.RunAsync(removeDataFolder: false);
+    }
+}

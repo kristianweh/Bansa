@@ -1,4 +1,4 @@
-# Flow
+﻿# Bansa
 
 A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
@@ -17,14 +17,14 @@ A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Win
 - Threshold slider to hide apps below a rate (e.g., 1 KB/s) — gets rid of the noisy idle background processes.
 
 **Controls (per app, all reversible)**
-- **Block** — adds a Defender Firewall rule named `Flow-Block-<app>`.
-- **Upload limit** — exact rate cap via Windows QoS Policy (`Flow-Qos-<app>-limit`).
+- **Block** — adds a Defender Firewall rule named `Bansa-Block-<app>`.
+- **Upload limit** — exact rate cap via Windows QoS Policy (`Bansa-Qos-<app>-limit`).
 - **Download limit** — best-effort throttling via inbound monitor + temporary firewall block (see "How download limits work" below).
 - **Custom kbps input** — Set Limits dialog accepts any number plus presets.
 - **High-priority mark** — DSCP 46 (Expedited Forwarding) for games/voice.
 
 **Verifying limits work**
-- Built-in self-test downloads 25 MB from Cloudflare and shows the achieved rate. Set a limit on `Flow.exe` and run the test to verify exactly.
+- Built-in self-test downloads 25 MB from Cloudflare and shows the achieved rate. Set a limit on `Bansa.exe` and run the test to verify exactly.
 - "Open fast.com" button for testing under your browser's process.
 
 **Themes & UX**
@@ -33,31 +33,31 @@ A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Win
 - Card-based modern layout, status bar, tabbed navigation.
 
 **Storage**
-- SQLite history at `%LocalAppData%\Flow\flow.db` with hourly rollup so the file stays small.
-- All settings at `%LocalAppData%\Flow\settings.json`.
+- SQLite history at `%LocalAppData%\Bansa\Bansa.db` with hourly rollup so the file stays small.
+- All settings at `%LocalAppData%\Bansa\settings.json`.
 
-**One-click cleanup** removes every firewall rule, QoS policy, and throttle block Flow has added.
+**One-click cleanup** removes every firewall rule, QoS policy, and throttle block Bansa has added.
 
 ## How download limits work (and what they can't do)
 
 Windows QoS Policy only throttles **outbound** traffic — there's no clean user-mode way to rate-limit inbound traffic per process.
 
-Flow's download limit works by:
+Bansa's download limit works by:
 1. Watching the app's actual download rate via ETW (the same monitor that powers the UI).
-2. When the rate exceeds 110% of the cap for several samples, Flow temporarily adds an inbound firewall block rule for that app.
+2. When the rate exceeds 110% of the cap for several samples, Bansa temporarily adds an inbound firewall block rule for that app.
 3. When the rate drops below 70% of the cap, the block is removed.
 
 This results in a **stutter pattern**: short downloads alternating with short blocks. The **average rate** matches your cap, but the connection isn't smoothly paced like with a kernel-level driver. For most use cases (keeping a backup app from saturating your link, capping a video stream's bitrate) it works well enough.
 
-For perfect bidirectional throttling you'd need a kernel callout driver — explicitly out of scope, since the no-driver design is what makes Flow fully reversible.
+For perfect bidirectional throttling you'd need a kernel callout driver — explicitly out of scope, since the no-driver design is what makes Bansa fully reversible.
 
 ## Design principles
 
 1. No kernel drivers. No installer. No background service.
 2. Single executable. Asks for admin elevation when launched.
-3. Every change is tagged `Flow-…` so cleanup finds and removes only Flow's own changes.
+3. Every change is tagged `Bansa-…` so cleanup finds and removes only Bansa's own changes.
 4. Built entirely on Defender Firewall, QoS Policy, ETW, IP Helper API — all native Windows.
-5. Data lives in one folder (`%LocalAppData%\Flow\`).
+5. Data lives in one folder (`%LocalAppData%\Bansa\`).
 
 See `design.md` for architecture and `REVERSIBILITY.md` for the full audit of system mutations.
 
@@ -73,13 +73,13 @@ See `design.md` for architecture and `REVERSIBILITY.md` for the full audit of sy
 Open PowerShell **as Administrator**, then:
 
 ```powershell
-cd "path\to\Flow, bandwidth monitor\src"
-dotnet run --project Flow -c Release
+cd "path\to\Bansa, bandwidth monitor\src"
+dotnet run --project Bansa -c Release
 ```
 
-Windows will prompt for UAC because Flow needs admin to start ETW sessions and manage firewall / QoS rules. Click **Yes**.
+Windows will prompt for UAC because Bansa needs admin to start ETW sessions and manage firewall / QoS rules. Click **Yes**.
 
-## Using Flow
+## Using Bansa
 
 **Apps list (Processes tab)**
 - Sort by clicking any column header.
@@ -95,7 +95,7 @@ Windows will prompt for UAC because Flow needs admin to start ETW sessions and m
 - **Show individual processes** — same as double-click.
 
 **Speed Test tab**
-- Self-test for verifying limits on Flow.exe itself.
+- Self-test for verifying limits on Bansa.exe itself.
 - External launcher for fast.com.
 
 **Settings tab**
@@ -111,28 +111,28 @@ Windows will prompt for UAC because Flow needs admin to start ETW sessions and m
 
 ## Full uninstall (no trace)
 
-1. Open Flow → **Cleanup** button (header or Settings).
-2. Close Flow.
-3. Delete `%LocalAppData%\Flow\`.
+1. Open Bansa → **Cleanup** button (header or Settings).
+2. Close Bansa.
+3. Delete `%LocalAppData%\Bansa\`.
 4. Delete the project folder.
 
-Or run `Uninstall-Flow.ps1` from an elevated PowerShell prompt for the same effect.
+Or run `Uninstall-Bansa.ps1` from an elevated PowerShell prompt for the same effect.
 
-Verify with `Inspect-Flow.ps1` at any time to see what Flow has on the system.
+Verify with `Inspect-Bansa.ps1` at any time to see what Bansa has on the system.
 
 ## Project layout
 
 ```
-Flow, bandwidth monitor/
+Bansa, bandwidth monitor/
 ├── README.md
 ├── design.md
 ├── REVERSIBILITY.md
-├── Uninstall-Flow.ps1
-├── Inspect-Flow.ps1
+├── Uninstall-Bansa.ps1
+├── Inspect-Bansa.ps1
 └── src/
-    ├── Flow.sln
-    └── Flow/
-        ├── Flow.csproj
+    ├── Bansa.sln
+    └── Bansa/
+        ├── Bansa.csproj
         ├── app.manifest         ← requires admin
         ├── App.xaml(.cs)
         ├── MainWindow.xaml(.cs)
