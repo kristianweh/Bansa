@@ -41,9 +41,12 @@ public sealed class ProgressWidthConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 2) return 0d;
-        var progress   = System.Convert.ToDouble(values[0]);
-        var trackWidth = values[1] is double d ? d : 0d;
+        // Guard: either value can be UnsetValue (MS.Internal.NamedObject) during layout
+        if (values is not { Length: >= 2 }) return 0d;
+        if (values[0] is not int and not double and not float) return 0d;
+        if (values[1] is not double trackWidth || trackWidth <= 0) return 0d;
+
+        var progress = System.Convert.ToDouble(values[0]);
         return Math.Max(0, Math.Min(trackWidth, trackWidth * progress / 100.0));
     }
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

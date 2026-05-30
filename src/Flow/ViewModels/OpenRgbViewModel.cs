@@ -21,6 +21,7 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool     _needsSetup;    // true until first successful install
     [ObservableProperty] private int      _downloadProgress;
     [ObservableProperty] private string   _downloadStatus = "";
+    [ObservableProperty] private string   _setupError     = "";  // persists after a failed attempt
     [ObservableProperty] private string   _statusText     = "Starting…";
     [ObservableProperty] private WpfColor _globalColor    = WpfColors.White;
 
@@ -45,6 +46,7 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
     {
         _downloadCts = new CancellationTokenSource();
         IsDownloading = true;
+        SetupError    = "";
 
         try
         {
@@ -58,11 +60,11 @@ public sealed partial class OpenRgbViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            DownloadStatus = "Cancelled";
+            SetupError = "Download cancelled.";
         }
         catch (Exception ex)
         {
-            DownloadStatus = $"Download failed: {ex.Message}";
+            SetupError = $"Setup failed: {ex.Message}";
         }
         finally
         {

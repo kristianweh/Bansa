@@ -7,9 +7,9 @@ namespace Flow.Services;
 
 public sealed class OpenRgbDownloader
 {
-    // GitLab project ID for CalcProgrammer1/OpenRGB
+    // Codeberg API — OpenRGB moved binaries here from GitLab
     private const string ReleasesApi =
-        "https://gitlab.com/api/v4/projects/9582376/releases";
+        "https://codeberg.org/api/v1/repos/OpenRGB/OpenRGB/releases?limit=1";
 
     private static readonly HttpClient Http = new()
     {
@@ -35,18 +35,18 @@ public sealed class OpenRgbDownloader
         CancellationToken ct = default)
     {
         onStatus("Finding latest OpenRGB release…");
-        onProgress(0);
+        onProgress(2);
 
-        var assetUrl = await GetLatestAssetUrlAsync(ct);
+        var (assetUrl, assetName) = await GetLatestAssetAsync(ct);
 
-        onStatus("Downloading OpenRGB portable…");
+        onStatus($"Downloading {assetName}…");
         onProgress(5);
 
         var zipPath = Path.Combine(Path.GetTempPath(), "OpenRGB_portable.zip");
         await DownloadFileAsync(assetUrl, zipPath, onProgress, ct);
 
         onStatus("Extracting…");
-        onProgress(95);
+        onProgress(96);
 
         Directory.CreateDirectory(InstallDir);
         ExtractZip(zipPath, InstallDir);
@@ -59,44 +59,44 @@ public sealed class OpenRgbDownloader
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
-    private async Task<string> GetLatestAssetUrlAsync(CancellationToken ct)
+    private async Task<(string Url, string Name)> GetLatestAssetAsync(CancellationToken ct)
     {
         var json = await Http.GetStringAsync(ReleasesApi, ct);
         using var doc = JsonDocument.Parse(json);
 
-        // Releases are returned newest-first
-        var release = doc.RootElement.EnumerateArray().First();
-        var assets  = release.GetProperty("assets").GetProperty("links");
+        var release = doc.RootElement.EnumerateArray()
+            .FirstOrDefault(r => r.ValueKind == JsonValueKind.Object);
 
-        foreach (var link in assets.EnumerateArray())
+        if (release.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("No releases found on Codeberg.");
+
+        if (!release.TryGetProperty("assets", out var assets))
+            throw new InvalidOperationException("Release has no assets array.");
+
+        // Prefer Windows 64-bit portable zip
+        foreach (var asset in assets.EnumerateArray())
         {
-            var name = link.GetProperty("name").GetString() ?? "";
-            // Match the Windows 64-bit portable zip
-            if (name.Contains("Windows", StringComparison.OrdinalIgnoreCase) &&
-                name.Contains("64",      StringComparison.OrdinalIgnoreCase) &&
-                name.EndsWith(".zip",    StringComparison.OrdinalIgnoreCase))
-            {
-                return link.GetProperty("url").GetString()
-                    ?? throw new InvalidOperationException("Asset URL missing");
-            }
+            var name = asset.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            var url  = asset.TryGetProperty("browser_download_url", out var u) ? u.GetString() ?? "" : "";
+
+            if (name.Contains("Windows_64", StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                return (url, name);
         }
 
-        // Broader fallback — any zip for Windows/AMD64
-        foreach (var link in assets.EnumerateArray())
+        // Fallback: any Windows zip
+        foreach (var asset in assets.EnumerateArray())
         {
-            var name = link.GetProperty("name").GetString() ?? "";
-            if ((name.Contains("Windows", StringComparison.OrdinalIgnoreCase) ||
-                 name.Contains("AMD64",   StringComparison.OrdinalIgnoreCase)) &&
+            var name = asset.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            var url  = asset.TryGetProperty("browser_download_url", out var u) ? u.GetString() ?? "" : "";
+
+            if (name.Contains("Windows", StringComparison.OrdinalIgnoreCase) &&
                 name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                return link.GetProperty("url").GetString()
-                    ?? throw new InvalidOperationException("Asset URL missing");
-            }
+                return (url, name);
         }
 
         throw new InvalidOperationException(
-            "Could not find a Windows portable zip in the latest OpenRGB release. " +
-            "Check https://gitlab.com/CalcProgrammer1/OpenRGB/-/releases for manual download.");
+            "Could not find a Windows 64-bit portable zip in the latest OpenRGB release.");
     }
 
     private static async Task DownloadFileAsync(
@@ -111,7 +111,7 @@ public sealed class OpenRgbDownloader
         var buffer = new byte[81920];
         long read  = 0;
 
-        await using var src  = await response.Content.ReadAsStreamAsync(ct);
+        await using var src   = await response.Content.ReadAsStreamAsync(ct);
         await using var dest_ = File.Create(dest);
 
         int n;
@@ -128,8 +128,7 @@ public sealed class OpenRgbDownloader
     {
         using var zip = ZipFile.OpenRead(zipPath);
 
-        // Some releases nest everything under a single root folder in the zip.
-        // Detect that and strip the prefix so we always get a flat install dir.
+        // Detect and strip a single top-level folder prefix if present
         var topDirs = zip.Entries
             .Select(e => e.FullName.Split('/')[0])
             .Distinct()
@@ -142,7 +141,7 @@ public sealed class OpenRgbDownloader
 
         foreach (var entry in zip.Entries)
         {
-            if (entry.FullName.EndsWith('/')) continue;  // directory entry
+            if (entry.FullName.EndsWith('/')) continue;
 
             var relative = prefix.Length > 0 && entry.FullName.StartsWith(prefix)
                 ? entry.FullName[prefix.Length..]
@@ -150,7 +149,6 @@ public sealed class OpenRgbDownloader
 
             var fullDest = Path.Combine(destDir, relative.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(fullDest)!);
-
             entry.ExtractToFile(fullDest, overwrite: true);
         }
     }

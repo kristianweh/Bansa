@@ -57,6 +57,23 @@
                                 Style="{StaticResource AccentButton}"
                                 Command="{Binding SetupCommand}"
                                 HorizontalAlignment="Left" />
+                        <!-- Error from a previous attempt — persists until next try -->
+                        <TextBlock Text="{Binding SetupError}"
+                                   Foreground="#EF5350"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SetupError}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Downloading state: progress bar + status -->
