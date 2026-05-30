@@ -35,8 +35,9 @@ namespace Flow;
 
 public partial class MainWindow : Window
 {
-    private TrayIconManager? _tray;
+    private TrayIconManager?    _tray;
     private FloatingGraphWindow? _floatingGraph;
+    private OpenRgbViewModel?   _openRgbVm;
 
     // Chart state
     private IReadOnlyList<(long Down, long Up)> _chartHistory = Array.Empty<(long, long)>();
@@ -313,6 +314,10 @@ public partial class MainWindow : Window
 
         // Wire hardware monitor panel live updates
         InitHardwarePanel();
+
+        // Wire OpenRGB panel
+        _openRgbVm = new OpenRgbViewModel();
+        OpenRgbPanel.DataContext = _openRgbVm;
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -334,6 +339,7 @@ public partial class MainWindow : Window
         try { UnregisterHotKey(new WindowInteropHelper(this).Handle, _hotKeyId); } catch { }
         try { _floatingGraph?.Close(); } catch { }
         try { _tray?.Dispose(); } catch { }
+        try { _openRgbVm?.Dispose(); } catch { }
         try { Vm.Dispose(); } catch { }
 
         // Save ShowFloatingGraph LAST so it wins over any value written by FloatingGraphWindow.Closed
@@ -1041,7 +1047,7 @@ public partial class MainWindow : Window
         translate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
-    /// <summary>Switch to a top-level panel by index (0=Dashboard,1=Network,2=Hardware,3=History,4=Settings).</summary>
+    /// <summary>Switch to a top-level panel by index (0=Dashboard,1=Network,2=Hardware,3=History,4=Settings,5=OpenRGB).</summary>
     private void NavigateToPanel(int idx)
     {
         NavDashboard.IsChecked = idx == 0;
@@ -1049,8 +1055,9 @@ public partial class MainWindow : Window
         NavHardware.IsChecked  = idx == 2;
         NavHistory.IsChecked   = idx == 3;
         NavSettings.IsChecked  = idx == 4;
+        NavOpenRgb.IsChecked   = idx == 5;
 
-        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, HistoryPanel, SettingsPanel];
+        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, HistoryPanel, SettingsPanel, OpenRgbPanel];
         for (int i = 0; i < panels.Length; i++)
         {
             if (i == idx)
