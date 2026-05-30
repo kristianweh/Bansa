@@ -127,38 +127,38 @@ public sealed class ToolsViewModel : IDisposable
 
     private static async Task<(string Url, string Name)> GetHwInfoAssetAsync(CancellationToken ct)
     {
-        // The official HWiNFO download page lists the latest portable ZIP.
-        // The portable link is always at hwinfo.com/files/hwi_NNN.zip
-        try
-        {
-            var html = await Http.GetStringAsync("https://www.hwinfo.com/download/", ct);
+        // HWiNFO's website uses JavaScript-rendered download buttons, so scraping the page
+        // fails.  Instead we query the WinGet package manifest index on GitHub — it's always
+        // up to date and gives us the authoritative version number.  The direct portable ZIP
+        // URL follows the predictable pattern: hwinfo.com/files/hwi_{major}{minor}.zip
+        // e.g., v8.16 → hwi_816.zip
 
-            // Match relative or absolute path to the portable zip
-            var match = Regex.Match(html,
-                @"(?:https://www\.hwinfo\.com)?/files/hwi_(\d+)\.zip",
-                RegexOptions.IgnoreCase);
+        var json = await Http.GetStringAsync(
+            "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/r/REALiX/HWiNFO",
+            ct);
 
-            if (match.Success)
-            {
-                var path = match.Value.StartsWith("http")
-                    ? match.Value
-                    : "https://www.hwinfo.com" + match.Value;
-                return (path, $"hwi_{match.Groups[1].Value}.zip");
-            }
+        using var doc = JsonDocument.Parse(json);
 
-            // Fallback: look for any .zip link on the page mentioning hwinfo
-            var fallback = Regex.Match(html,
-                @"https?://[^""'<>\s]*hwi[^""'<>\s]*\.zip",
-                RegexOptions.IgnoreCase);
-            if (fallback.Success)
-                return (fallback.Value, Path.GetFileName(fallback.Value));
-        }
-        catch (OperationCanceledException) { throw; }
-        catch { /* fall through */ }
+        // Version directory names look like "8.16" or "8.16.0" — take the highest
+        var latestVersion = doc.RootElement
+            .EnumerateArray()
+            .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "dir")
+            .Select(e => e.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "")
+            .Where(s => s.Length > 0)
+            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+            .LastOrDefault();
 
-        throw new InvalidOperationException(
-            "Could not find HWiNFO download URL. " +
-            "Visit https://www.hwinfo.com/download/ to download manually.");
+        if (string.IsNullOrEmpty(latestVersion))
+            throw new InvalidOperationException("Could not determine latest HWiNFO version from WinGet.");
+
+        // Build version code: "8.16" → "816",  "8.16.0" → "816"
+        var parts       = latestVersion.Split('.');
+        var versionCode = parts[0] + (parts.Length > 1 ? parts[1] : "00");
+
+        var url  = $"https://www.hwinfo.com/files/hwi_{versionCode}.zip";
+        var name = $"hwi_{versionCode}.zip";
+
+        return (url, name);
     }
 
     // ── ShareX downloader ─────────────────────────────────────────────────

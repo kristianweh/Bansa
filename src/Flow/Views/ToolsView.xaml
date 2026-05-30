@@ -11,25 +11,30 @@
             <TextBlock Text="Portable utilities — downloaded once into your Flow folder."
                        Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,0,20" />
 
-            <!-- Card grid -->
+            <!-- Card grid — WrapPanel rows, all cards identical dimensions -->
             <ItemsControl ItemsSource="{Binding Tools}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
+                        <!-- ItemHeight forces every card slot to the same height so
+                             buttons in the same row are always horizontally aligned -->
+                        <WrapPanel Orientation="Horizontal" ItemWidth="222" ItemHeight="300" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
+
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:PortableToolItem}">
 
-                        <!-- Tool card — 210 px wide -->
-                        <Border Width="210" Margin="0,0,12,12" CornerRadius="10"
+                        <!-- Card — fills its 222×300 WrapPanel slot (12px right gap) -->
+                        <Border Width="210" Margin="0,0,0,0" VerticalAlignment="Stretch"
+                                CornerRadius="10"
                                 Background="{DynamicResource PanelBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="96" />   <!-- coloured tile  -->
-                                    <RowDefinition Height="*"  />   <!-- content        -->
+                                    <RowDefinition Height="90" />   <!-- coloured tile  -->
+                                    <RowDefinition Height="*"  />   <!-- body — flexible -->
+                                    <RowDefinition Height="Auto" /> <!-- button — pinned -->
                                 </Grid.RowDefinitions>
 
                                 <!-- ── Coloured logo tile ── -->
@@ -38,29 +43,28 @@
                                         CornerRadius="9,9,0,0">
                                     <TextBlock Text="{Binding IconGlyph}"
                                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="44"
+                                               FontSize="40"
                                                Foreground="White"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Opacity="0.92" />
+                                               Opacity="0.90" />
                                 </Border>
 
-                                <!-- ── Card body ── -->
-                                <StackPanel Grid.Row="1" Margin="14,12,14,14">
+                                <!-- ── Body (name + description + status/progress) ── -->
+                                <StackPanel Grid.Row="1" Margin="13,11,13,8">
 
-                                    <!-- Name -->
                                     <TextBlock Text="{Binding Name}"
-                                               FontSize="14" FontWeight="SemiBold"
+                                               FontSize="13.5" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextBrush}"
                                                Margin="0,0,0,4" />
 
-                                    <!-- Description -->
                                     <TextBlock Text="{Binding Description}"
                                                FontSize="11.5"
                                                Foreground="{DynamicResource SubtleTextBrush}"
                                                TextWrapping="Wrap"
                                                LineHeight="16"
-                                               Margin="0,0,0,10" />
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,0,0,8" />
 
                                     <!-- ── Downloading state ── -->
                                     <StackPanel>
@@ -81,13 +85,11 @@
                                                    TextWrapping="Wrap"
                                                    Margin="0,0,0,6" />
 
-                                        <!-- Progress track -->
                                         <Border Background="{DynamicResource PanelAltBrush}"
-                                                CornerRadius="3" Height="5"
-                                                Margin="0,0,0,8">
+                                                CornerRadius="3" Height="4">
                                             <Border Background="{Binding TileBrush}"
                                                     HorizontalAlignment="Left"
-                                                    Height="5" CornerRadius="3">
+                                                    Height="4" CornerRadius="3">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource ProgressWidthConverter}">
                                                         <Binding Path="Progress" />
@@ -97,10 +99,6 @@
                                                 </Border.Width>
                                             </Border>
                                         </Border>
-
-                                        <Button Content="Cancel" Padding="0,7"
-                                                HorizontalAlignment="Stretch"
-                                                Command="{Binding CancelCommand}" />
                                     </StackPanel>
 
                                     <!-- ── Idle state ── -->
@@ -115,9 +113,8 @@
                                             </Style>
                                         </StackPanel.Style>
 
-                                        <!-- Status dot + sub-label -->
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="6" Height="6" VerticalAlignment="Center" Margin="0,0,5,0">
                                                 <Ellipse.Style>
                                                     <Style TargetType="Ellipse">
                                                         <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
@@ -139,11 +136,10 @@
                                                        VerticalAlignment="Center" />
                                         </StackPanel>
 
-                                        <!-- Error -->
                                         <TextBlock Text="{Binding Error}"
                                                    Foreground="#EF5350"
                                                    FontSize="11" TextWrapping="Wrap"
-                                                   Margin="0,0,0,8">
+                                                   Margin="0,5,0,0">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Visible" />
@@ -155,22 +151,44 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-
-                                        <!-- Action button -->
-                                        <Button Padding="0,8"
-                                                HorizontalAlignment="Stretch"
-                                                Command="{Binding ActionCommand}">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource AccentButton}" />
-                                            </Button.Style>
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                <TextBlock Text="{Binding ButtonLabel}"
-                                                           FontSize="12" FontWeight="Medium" />
-                                            </StackPanel>
-                                        </Button>
                                     </StackPanel>
 
                                 </StackPanel>
+
+                                <!-- ── Button row — always pinned to the bottom of the card ── -->
+                                <Grid Grid.Row="2" Margin="13,0,13,13">
+                                    <!-- Action button (hidden while downloading) -->
+                                    <Button Padding="0,8" HorizontalAlignment="Stretch"
+                                            Command="{Binding ActionCommand}">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <TextBlock Text="{Binding ButtonLabel}" FontSize="12" FontWeight="Medium" />
+                                    </Button>
+
+                                    <!-- Cancel button (visible only while downloading) -->
+                                    <Button Content="Cancel" Padding="0,8"
+                                            HorizontalAlignment="Stretch"
+                                            Command="{Binding CancelCommand}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </Grid>
+
                             </Grid>
                         </Border>
 

@@ -8,15 +8,13 @@
     <flow:SpeedUnitConverter  x:Key="SpeedUnit"  />
 
     <!-- ── Bundled font families ─────────────────────────────────────────── -->
-    <!-- Roboto — humanist geometric sans; used for all UI text.
-         Closer to Google / Material Design aesthetic than Segoe UI.
-         Medium weight fills the SemiBold slot (Roboto has no 600-weight). -->
-    <FontFamily x:Key="RobotoFamily">pack://application:,,,/Fonts/#Roboto</FontFamily>
-    <!-- Roboto Mono — proportionally spaced monospace companion.
-         Replaces Consolas for all numeric readouts: speeds, percentages,
-         ping, temperatures.  Monospaced digits prevent column-width jitter
-         as values change; Roboto Mono is far less "terminal" than Consolas. -->
-    <FontFamily x:Key="RobotoMonoFamily">pack://application:,,,/Fonts/#Roboto Mono</FontFamily>
+    <!-- Inter — clean geometric sans used throughout the app (UI text, numbers,
+         brand name).  Closest free match to the Claude Desktop aesthetic.
+         Keys kept as Roboto* so no XAML references need updating. -->
+    <FontFamily x:Key="RobotoFamily">pack://application:,,,/Fonts/#Inter</FontFamily>
+    <!-- Inter for numeric readouts too — Inter has excellent digit consistency
+         and tabular-style spacing at typical UI sizes. -->
+    <FontFamily x:Key="RobotoMonoFamily">pack://application:,,,/Fonts/#Inter</FontFamily>
 
     <!-- ============================================================
          Base text / window

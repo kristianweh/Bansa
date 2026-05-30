@@ -33,13 +33,11 @@
     <!-- Roboto + Roboto Mono — bundled as WPF resources so they render identically
          on any Windows install regardless of whether the user has Google fonts.
          Reference in XAML: pack://application:,,,/Fonts/#Roboto  (or #Roboto Mono) -->
-    <Resource Include="Fonts\Roboto-Regular.ttf" />
-    <Resource Include="Fonts\Roboto-Medium.ttf" />
-    <Resource Include="Fonts\Roboto-Bold.ttf" />
-    <Resource Include="Fonts\Roboto-Light.ttf" />
-    <Resource Include="Fonts\RobotoMono-Regular.ttf" />
-    <Resource Include="Fonts\RobotoMono-Medium.ttf" />
-    <Resource Include="Fonts\RobotoMono-Bold.ttf" />
+    <Resource Include="Fonts\Inter-Regular.ttf" />
+    <Resource Include="Fonts\Inter-Medium.ttf" />
+    <Resource Include="Fonts\Inter-SemiBold.ttf" />
+    <Resource Include="Fonts\Inter-Bold.ttf" />
+    <Resource Include="Fonts\Inter-Light.ttf" />
   </ItemGroup>
 
   <ItemGroup>
