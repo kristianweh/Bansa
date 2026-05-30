@@ -4,56 +4,66 @@
              xmlns:vm="clr-namespace:Flow.ViewModels">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="0,8,24,24" MaxWidth="860" HorizontalAlignment="Left">
+        <StackPanel Margin="0,8,24,24">
 
             <!-- Header -->
             <TextBlock Text="Tools" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,4" />
             <TextBlock Text="Portable utilities — downloaded once into your Flow folder."
                        Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,0,20" />
 
-            <!-- Tool cards -->
+            <!-- Card grid -->
             <ItemsControl ItemsSource="{Binding Tools}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:PortableToolItem}">
-                        <Border Padding="16,14" Margin="0,0,0,8">
-                            <Border.Style>
-                                <Style TargetType="Border" BasedOn="{StaticResource Card}" />
-                            </Border.Style>
 
+                        <!-- Tool card — 210 px wide -->
+                        <Border Width="210" Margin="0,0,12,12" CornerRadius="10"
+                                Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1">
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="48" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="96" />   <!-- coloured tile  -->
+                                    <RowDefinition Height="*"  />   <!-- content        -->
+                                </Grid.RowDefinitions>
 
-                                <!-- Icon badge -->
-                                <Border Grid.Column="0"
-                                        Width="38" Height="38" CornerRadius="8"
-                                        Background="{DynamicResource PanelAltBrush}"
-                                        VerticalAlignment="Top" Margin="0,1,0,0">
+                                <!-- ── Coloured logo tile ── -->
+                                <Border Grid.Row="0"
+                                        Background="{Binding TileBrush}"
+                                        CornerRadius="9,9,0,0">
                                     <TextBlock Text="{Binding IconGlyph}"
                                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="18"
-                                               Foreground="{DynamicResource AccentBrush}"
+                                               FontSize="44"
+                                               Foreground="White"
                                                HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
+                                               VerticalAlignment="Center"
+                                               Opacity="0.92" />
                                 </Border>
 
-                                <!-- Name / description / progress -->
-                                <StackPanel Grid.Column="1" Margin="12,0,16,0" VerticalAlignment="Center">
+                                <!-- ── Card body ── -->
+                                <StackPanel Grid.Row="1" Margin="14,12,14,14">
 
+                                    <!-- Name -->
                                     <TextBlock Text="{Binding Name}"
                                                FontSize="14" FontWeight="SemiBold"
-                                               Margin="0,0,0,3" />
+                                               Foreground="{DynamicResource TextBrush}"
+                                               Margin="0,0,0,4" />
 
+                                    <!-- Description -->
                                     <TextBlock Text="{Binding Description}"
+                                               FontSize="11.5"
                                                Foreground="{DynamicResource SubtleTextBrush}"
-                                               FontSize="12" TextWrapping="Wrap"
-                                               Margin="0,0,0,6" />
+                                               TextWrapping="Wrap"
+                                               LineHeight="16"
+                                               Margin="0,0,0,10" />
 
-                                    <!-- Progress bar + status (visible while downloading) -->
-                                    <StackPanel Margin="0,0,0,2">
+                                    <!-- ── Downloading state ── -->
+                                    <StackPanel>
                                         <StackPanel.Style>
                                             <Style TargetType="StackPanel">
                                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -68,14 +78,14 @@
                                         <TextBlock Text="{Binding StatusText}"
                                                    FontSize="11"
                                                    Foreground="{DynamicResource SubtleTextBrush}"
-                                                   Margin="0,0,0,5" />
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,6" />
 
-                                        <!-- Track -->
+                                        <!-- Progress track -->
                                         <Border Background="{DynamicResource PanelAltBrush}"
                                                 CornerRadius="3" Height="5"
-                                                MaxWidth="320" HorizontalAlignment="Left">
-                                            <!-- Fill -->
-                                            <Border Background="{DynamicResource AccentBrush}"
+                                                Margin="0,0,0,8">
+                                            <Border Background="{Binding TileBrush}"
                                                     HorizontalAlignment="Left"
                                                     Height="5" CornerRadius="3">
                                                 <Border.Width>
@@ -87,77 +97,83 @@
                                                 </Border.Width>
                                             </Border>
                                         </Border>
+
+                                        <Button Content="Cancel" Padding="0,7"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding CancelCommand}" />
                                     </StackPanel>
 
-                                    <!-- Sub-label (idle) -->
-                                    <TextBlock Text="{Binding SubLabel}"
-                                               FontSize="11" Opacity="0.45"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                    <!-- ── Idle state ── -->
+                                    <StackPanel>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsDownloading}" Value="True">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                        </StackPanel.Style>
 
-                                    <!-- Error message -->
-                                    <TextBlock Text="{Binding Error}"
-                                               Foreground="#EF5350"
-                                               FontSize="11" TextWrapping="Wrap"
-                                               Margin="0,4,0,0">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Error}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                        <!-- Status dot + sub-label -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInstalled}" Value="True">
+                                                                <Setter Property="Fill" Value="#4CAF50" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsScript}" Value="True">
+                                                                <Setter Property="Fill" Value="#FF9800" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                            <TextBlock Text="{Binding SubLabel}"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource SubtleTextBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
 
-                                </StackPanel>
+                                        <!-- Error -->
+                                        <TextBlock Text="{Binding Error}"
+                                                   Foreground="#EF5350"
+                                                   FontSize="11" TextWrapping="Wrap"
+                                                   Margin="0,0,0,8">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Error}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
 
-                                <!-- Buttons (right side) -->
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
-
-                                    <!-- Action button (Download / Open / Run) — hidden while downloading -->
-                                    <Button Padding="18,8" Command="{Binding ActionCommand}">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                        <TextBlock Text="{Binding ButtonLabel}" />
-                                    </Button>
-
-                                    <!-- Cancel button — visible only while downloading -->
-                                    <Button Content="Cancel" Padding="18,8"
-                                            Command="{Binding CancelCommand}">
-                                        <Button.Style>
-                                            <Style TargetType="Button">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsDownloading}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                    </Button>
+                                        <!-- Action button -->
+                                        <Button Padding="0,8"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding ActionCommand}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource AccentButton}" />
+                                            </Button.Style>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <TextBlock Text="{Binding ButtonLabel}"
+                                                           FontSize="12" FontWeight="Medium" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
 
                                 </StackPanel>
                             </Grid>
                         </Border>
+
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

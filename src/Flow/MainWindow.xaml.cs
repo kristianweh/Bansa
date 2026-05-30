@@ -1090,11 +1090,11 @@ public partial class MainWindow : Window
         NavDashboard.IsChecked = idx == 0;
         NavProcesses.IsChecked = idx == 1;
         NavHardware.IsChecked  = idx == 2;
-        NavHistory.IsChecked   = idx == 3;
-        NavSettings.IsChecked  = idx == 4;
-        NavTools.IsChecked     = idx == 5;
+        NavTools.IsChecked     = idx == 3;
+        NavHistory.IsChecked   = idx == 4;
+        NavSettings.IsChecked  = idx == 5;
 
-        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, HistoryPanel, SettingsPanel, ToolsPanel];
+        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, ToolsPanel, HistoryPanel, SettingsPanel];
         for (int i = 0; i < panels.Length; i++)
         {
             if (i == idx)

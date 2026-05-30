@@ -7,9 +7,10 @@ namespace Flow.Services;
 
 public sealed class OpenRgbDownloader
 {
-    // Codeberg API — OpenRGB moved binaries here from GitLab
+    // Codeberg API — fetch enough releases to find the latest *stable* one
+    // (latest may be an rc/alpha/beta; we scan back through up to 10 releases)
     private const string ReleasesApi =
-        "https://codeberg.org/api/v1/repos/OpenRGB/OpenRGB/releases?limit=1";
+        "https://codeberg.org/api/v1/repos/OpenRGB/OpenRGB/releases?limit=10";
 
     private static readonly HttpClient Http = new()
     {

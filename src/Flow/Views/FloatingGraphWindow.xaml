@@ -168,8 +168,8 @@
                     <Border Width="3" CornerRadius="2" Margin="0,6,7,6"
                             Background="{DynamicResource AccentGradientVerticalBrush}" />
                     <TextBlock Text="FLOW" VerticalAlignment="Center"
-                               FontFamily="{StaticResource RobotoMonoFamily}" FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource SubtleTextBrush}" />
+                               FontFamily="{StaticResource RobotoMonoFamily}" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
 
                 <!-- Window controls -->
