@@ -64,8 +64,23 @@ public sealed class OpenRgbDownloader
         var json = await Http.GetStringAsync(ReleasesApi, ct);
         using var doc = JsonDocument.Parse(json);
 
+        // Prefer the latest stable release (skip rc/alpha/beta tags).
+        // OpenRGB 1.0rc2 requires the PawnIO kernel driver which may not be installed.
         var release = doc.RootElement.EnumerateArray()
-            .FirstOrDefault(r => r.ValueKind == JsonValueKind.Object);
+            .Where(r => r.ValueKind == JsonValueKind.Object)
+            .Where(r =>
+            {
+                var tag = r.TryGetProperty("tag_name", out var t) ? t.GetString() ?? "" : "";
+                return !tag.Contains("rc",    StringComparison.OrdinalIgnoreCase) &&
+                       !tag.Contains("alpha", StringComparison.OrdinalIgnoreCase) &&
+                       !tag.Contains("beta",  StringComparison.OrdinalIgnoreCase);
+            })
+            .FirstOrDefault();
+
+        // Fall back to whatever is newest if every release is pre-release
+        if (release.ValueKind != JsonValueKind.Object)
+            release = doc.RootElement.EnumerateArray()
+                .FirstOrDefault(r => r.ValueKind == JsonValueKind.Object);
 
         if (release.ValueKind != JsonValueKind.Object)
             throw new InvalidOperationException("No releases found on Codeberg.");

@@ -833,6 +833,13 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        // Never intercept PrintScreen — let the OS / Snipping Tool handle it.
+        if (e.Key is Key.PrintScreen or Key.Snapshot)
+        {
+            base.OnPreviewKeyDown(e);
+            return;
+        }
+
         if (_capturingHotkey)
         {
             e.Handled = true;
