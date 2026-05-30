@@ -125,12 +125,12 @@
                                 <TextBlock Text="History" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
-                        <!-- RGB Lighting -->
-                        <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavOpenRgb"
+                        <!-- Tools -->
+                        <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavTools"
                                      Click="OnNavClick" Tag="5" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="RGB Lighting" VerticalAlignment="Center" />
+                                <TextBlock Text="&#xE90F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
+                                <TextBlock Text="Tools" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
                         <!-- Settings -->
@@ -1287,8 +1287,8 @@
                 <!-- HISTORY -->
                 <views:HistoryView x:Name="HistoryPanel" Visibility="Collapsed" />
 
-                <!-- RGB LIGHTING -->
-                <views:OpenRgbView x:Name="OpenRgbPanel" Visibility="Collapsed" />
+                <!-- TOOLS -->
+                <views:ToolsView x:Name="ToolsPanel" Visibility="Collapsed" />
 
                 <!-- SETTINGS -->
                 <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">

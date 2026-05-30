@@ -37,7 +37,7 @@ public partial class MainWindow : Window
 {
     private TrayIconManager?    _tray;
     private FloatingGraphWindow? _floatingGraph;
-    private OpenRgbViewModel?   _openRgbVm;
+    private ToolsViewModel?      _toolsVm;
 
     // Chart state
     private IReadOnlyList<(long Down, long Up)> _chartHistory = Array.Empty<(long, long)>();
@@ -345,10 +345,9 @@ public partial class MainWindow : Window
         // Wire hardware monitor panel live updates
         InitHardwarePanel();
 
-        // Wire OpenRGB panel and silently start server if already installed
-        _openRgbVm = new OpenRgbViewModel();
-        OpenRgbPanel.DataContext = _openRgbVm;
-        _ = _openRgbVm.InitAsync();
+        // Wire Tools panel
+        _toolsVm = new ToolsViewModel();
+        ToolsPanel.DataContext = _toolsVm;
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -370,7 +369,7 @@ public partial class MainWindow : Window
         try { UnregisterHotKey(new WindowInteropHelper(this).Handle, _hotKeyId); } catch { }
         try { _floatingGraph?.Close(); } catch { }
         try { _tray?.Dispose(); } catch { }
-        try { _openRgbVm?.Dispose(); } catch { }
+        try { _toolsVm?.Dispose(); } catch { }
         try { Vm.Dispose(); } catch { }
 
         // Save ShowFloatingGraph LAST so it wins over any value written by FloatingGraphWindow.Closed
@@ -1093,9 +1092,9 @@ public partial class MainWindow : Window
         NavHardware.IsChecked  = idx == 2;
         NavHistory.IsChecked   = idx == 3;
         NavSettings.IsChecked  = idx == 4;
-        NavOpenRgb.IsChecked   = idx == 5;
+        NavTools.IsChecked     = idx == 5;
 
-        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, HistoryPanel, SettingsPanel, OpenRgbPanel];
+        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, HistoryPanel, SettingsPanel, ToolsPanel];
         for (int i = 0; i < panels.Length; i++)
         {
             if (i == idx)

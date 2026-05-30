@@ -44,8 +44,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-    <PackageReference Include="OpenRGB.NET" Version="2.2.0" />
-    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+<PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.16" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
