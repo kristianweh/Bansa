@@ -24,6 +24,8 @@ public sealed class TrayIconManager : IDisposable
     private readonly Window _ownerWindow;
     private readonly TrayPopupWindow _popup;
     private readonly DispatcherTimer _cursorPoll;
+    private DispatcherTimer? _hoverTimer;        // delays popup appearance
+    private const int HoverDelayMs = 600;
     private IntPtr _currentIconHandle = IntPtr.Zero;
     private int _iconSize;
 
@@ -88,24 +90,44 @@ public sealed class TrayIconManager : IDisposable
 
     private void OnTrayMouseMove(object? sender, WinForms.MouseEventArgs e)
     {
-        if (!_popup.IsVisible) ShowPopup();
-        else _popup.CancelHide();
+        if (_popup.IsVisible) { _popup.CancelHide(); return; }
+
+        // Don't stack timers — if one is already pending just let it fire
+        if (_hoverTimer != null) return;
+
+        // Delay the popup so it doesn't flash on accidental pass-overs
+        _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HoverDelayMs) };
+        _hoverTimer.Tick += (_, _) =>
+        {
+            _hoverTimer?.Stop();
+            _hoverTimer = null;
+            ShowPopup();
+        };
+        _hoverTimer.Start();
+        _cursorPoll.Start();   // watch for early departure during the delay
     }
 
     private void OnCursorPoll(object? sender, EventArgs e)
     {
-        if (!_popup.IsVisible) { _cursorPoll.Stop(); return; }
+        // During hover delay: cancel if cursor already left the taskbar
+        if (!_popup.IsVisible)
+        {
+            if (_hoverTimer != null && GetCursorPos(out var tp))
+            {
+                bool stillNearTray = tp.Y >= (int)SystemParameters.WorkArea.Bottom;
+                if (!stillNearTray) { _hoverTimer.Stop(); _hoverTimer = null; }
+            }
+            if (_hoverTimer == null) _cursorPoll.Stop();
+            return;
+        }
 
         bool nearTray  = false;
         bool overPopup = false;
 
         if (GetCursorPos(out var p))
         {
-            // "Near tray" = cursor is below the work area (inside the taskbar strip)
             var wa = SystemParameters.WorkArea;
             nearTray = p.Y >= (int)wa.Bottom;
-
-            // Also "over popup" check using actual screen coordinates
             overPopup = p.X >= _popup.Left && p.X <= _popup.Left + _popup.Width
                      && p.Y >= _popup.Top  && p.Y <= _popup.Top  + _popup.Height;
         }
@@ -285,6 +307,7 @@ public sealed class TrayIconManager : IDisposable
     public void Dispose()
     {
         try { SettingsManager.Changed -= OnSettingsChanged; } catch { }
+        try { _hoverTimer?.Stop(); _hoverTimer = null; } catch { }
         try { _cursorPoll.Stop(); } catch { }
         try { _tray.Visible = false; _tray.Dispose(); } catch { }
         try { _popup.Close(); } catch { }

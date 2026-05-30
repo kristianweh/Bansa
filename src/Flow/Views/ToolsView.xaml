@@ -151,6 +151,23 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+
+                                        <!-- Fallback: open website when download keeps failing -->
+                                        <Button Content="Open Download Page →"
+                                                Padding="0,6" HorizontalAlignment="Stretch"
+                                                Margin="0,5,0,0"
+                                                Command="{Binding OpenWebsiteCommand}">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ShowFallbackButton}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
 
                                 </StackPanel>

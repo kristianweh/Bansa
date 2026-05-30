@@ -22,6 +22,7 @@ public sealed class ToolsViewModel : IDisposable
 {
     public ObservableCollection<PortableToolItem> Tools { get; } = [];
 
+    // General API requests (GitHub, Codeberg)
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromSeconds(60),
@@ -29,6 +30,19 @@ public sealed class ToolsViewModel : IDisposable
         {
             { "User-Agent",  "Flow-App/1.0" },
             { "Accept",      "application/json" },
+        }
+    };
+
+    // Some download servers (e.g. hwinfo.com) validate the browser UA / Referer.
+    // Use a separate client that looks like a real browser for those downloads.
+    private static readonly HttpClient BrowserHttp = new()
+    {
+        Timeout = TimeSpan.FromSeconds(120),
+        DefaultRequestHeaders =
+        {
+            { "User-Agent",     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" },
+            { "Accept",         "*/*" },
+            { "Accept-Language","en-US,en;q=0.9" },
         }
     };
 
@@ -57,7 +71,8 @@ public sealed class ToolsViewModel : IDisposable
             installDir:  hwInfoDir,
             exeName:     "HWiNFO64.exe",
             downloadFunc: async (prog, status, ct) =>
-                await DownloadHwInfoAsync(hwInfoDir, prog, status, ct)));
+                await DownloadHwInfoAsync(hwInfoDir, prog, status, ct),
+            websiteUrl:  "https://www.hwinfo.com/download/"));
 
         // ── ShareX ────────────────────────────────────────────────────────
         var shareXDir = Path.Combine(App.DataFolder, "Tools", "ShareX");
@@ -112,7 +127,9 @@ public sealed class ToolsViewModel : IDisposable
         onProgress(5);
 
         var zipPath = Path.Combine(Path.GetTempPath(), "HWiNFO_portable.zip");
-        await DownloadFileAsync(url, zipPath, onProgress, ct);
+        // hwinfo.com checks the browser User-Agent and Referer; use BrowserHttp
+        await DownloadFileAsync(url, zipPath, onProgress, ct,
+            referer: "https://www.hwinfo.com/download/", useBrowserClient: true);
 
         onStatus("Extracting…");
         onProgress(96);
@@ -241,9 +258,15 @@ public sealed class ToolsViewModel : IDisposable
     private static async Task DownloadFileAsync(
         string url, string dest,
         Action<int> onProgress,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? referer = null,
+        bool useBrowserClient = false)
     {
-        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        var client = useBrowserClient ? BrowserHttp : Http;
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        if (referer is not null)
+            req.Headers.TryAddWithoutValidation("Referer", referer);
+        using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
         var total  = response.Content.Headers.ContentLength ?? -1L;
@@ -312,6 +335,8 @@ public sealed partial class PortableToolItem : ObservableObject, IDisposable
     private readonly string? _scriptCommand;
     private readonly Func<Action<int>, Action<string>, CancellationToken, Task>? _downloadFunc;
 
+    public string? WebsiteUrl { get; }
+
     public bool IsScript      => _scriptCommand is not null;
     public bool NeedsDownload => _downloadFunc is not null;
     public bool IsInstalled   => _exeName is not null
@@ -323,10 +348,16 @@ public sealed partial class PortableToolItem : ObservableObject, IDisposable
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private string _error      = "";
 
+    // Notify ShowFallbackButton whenever Error changes
+    partial void OnErrorChanged(string value) => OnPropertyChanged(nameof(ShowFallbackButton));
+
     // ── Derived display ───────────────────────────────────────────────────
-    public string ButtonLabel => IsScript    ? "Run"
-                               : IsInstalled ? "Open"
-                               :               "Download";
+    public string ButtonLabel      => IsScript    ? "Run"
+                                    : IsInstalled ? "Open"
+                                    :               "Download";
+
+    /// True when a download attempt failed and a website fallback URL is available
+    public bool ShowFallbackButton => WebsiteUrl is not null && !string.IsNullOrEmpty(Error);
 
     public string SubLabel
     {
@@ -349,6 +380,7 @@ public sealed partial class PortableToolItem : ObservableObject, IDisposable
     // ── Commands ──────────────────────────────────────────────────────────
     public IAsyncRelayCommand ActionCommand { get; }
     public RelayCommand        CancelCommand { get; }
+    public RelayCommand?       OpenWebsiteCommand { get; }
 
     // ── Constructors ──────────────────────────────────────────────────────
 
@@ -356,13 +388,18 @@ public sealed partial class PortableToolItem : ObservableObject, IDisposable
     public PortableToolItem(
         string id, string name, string description, string iconGlyph, WpfBrush tileBrush,
         string installDir, string exeName,
-        Func<Action<int>, Action<string>, CancellationToken, Task> downloadFunc)
+        Func<Action<int>, Action<string>, CancellationToken, Task> downloadFunc,
+        string? websiteUrl = null)
     {
         Id = id; Name = name; Description = description;
         IconGlyph = iconGlyph; TileBrush = tileBrush;
         _installDir = installDir; _exeName = exeName; _downloadFunc = downloadFunc;
-        ActionCommand = new AsyncRelayCommand(ExecuteAsync);
-        CancelCommand = new RelayCommand(Cancel);
+        WebsiteUrl = websiteUrl;
+        ActionCommand      = new AsyncRelayCommand(ExecuteAsync);
+        CancelCommand      = new RelayCommand(Cancel);
+        if (websiteUrl is not null)
+            OpenWebsiteCommand = new RelayCommand(() =>
+                Process.Start(new ProcessStartInfo(websiteUrl) { UseShellExecute = true }));
     }
 
     /// Script tool — no download, runs a PowerShell one-liner
@@ -467,6 +504,7 @@ public sealed partial class PortableToolItem : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsInstalled));
         OnPropertyChanged(nameof(ButtonLabel));
         OnPropertyChanged(nameof(SubLabel));
+        OnPropertyChanged(nameof(ShowFallbackButton));
     }
 
     private static void UIInvoke(Action a) =>

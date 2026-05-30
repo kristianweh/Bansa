@@ -658,6 +658,22 @@ public partial class FloatingGraphWindow : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
+    /// <summary>Double-clicking the title bar opens (or restores) the main Flow window.</summary>
+    private void OnHeaderMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ClickCount < 2 || e.ChangedButton != System.Windows.Input.MouseButton.Left) return;
+        e.Handled = true;
+
+        var main = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+        if (main is null) return;
+        main.Show();
+        if (main.WindowState == WindowState.Minimized)
+            main.WindowState = WindowState.Normal;
+        main.Activate();
+        main.Topmost = true;
+        main.Topmost = false;
+    }
+
     // ── Window right-click context menu ───────────────────────────────────────
 
     /// <summary>Sync check states before the menu appears.</summary>
