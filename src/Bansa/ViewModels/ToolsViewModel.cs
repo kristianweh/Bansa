@@ -19,13 +19,15 @@ public sealed class ToolsViewModel
 
     public ToolsViewModel()
     {
+        var toolsDir = Path.Combine(App.DataFolder, "Tools");
+
         // ── OpenRGB ───────────────────────────────────────────────────────
         Tools.Add(new ToolItem(
             name:       "OpenRGB",
             description:"Control RGB lighting on keyboards, mice, GPUs and more.",
             iconGlyph:  "",
             tileBrush:  Solid("#7B2FBE"),
-            installDir: Path.Combine(App.DataFolder, "Tools", "OpenRGB"),
+            toolsDir:   toolsDir,
             exeName:    "OpenRGB.exe",
             websiteUrl: "https://openrgb.org"));
 
@@ -35,7 +37,7 @@ public sealed class ToolsViewModel
             description:"Comprehensive hardware information and real-time system monitoring.",
             iconGlyph:  "",
             tileBrush:  Solid("#1A8754"),
-            installDir: Path.Combine(App.DataFolder, "Tools", "HWiNFO"),
+            toolsDir:   toolsDir,
             exeName:    "HWiNFO64.exe",
             websiteUrl: "https://www.hwinfo.com/download/"));
 
@@ -45,7 +47,7 @@ public sealed class ToolsViewModel
             description:"Powerful screen capture, recording and file sharing.",
             iconGlyph:  "",
             tileBrush:  Solid("#1565C0"),
-            installDir: Path.Combine(App.DataFolder, "Tools", "ShareX"),
+            toolsDir:   toolsDir,
             exeName:    "ShareX.exe",
             websiteUrl: "https://getsharex.com"));
 
@@ -81,7 +83,7 @@ public sealed partial class ToolItem : ObservableObject
     public string?  WebsiteUrl  { get; }
 
     // ── Kind ──────────────────────────────────────────────────────────────
-    private readonly string? _installDir;
+    private readonly string? _toolsDir;      // Data\Tools — searched recursively
     private readonly string? _exeName;
     private readonly string? _scriptCommand;
 
@@ -92,10 +94,10 @@ public sealed partial class ToolItem : ObservableObject
 
     // ── Derived ───────────────────────────────────────────────────────────
 
-    /// Searches the tool folder recursively for the exe — handles any subfolder structure.
+    /// Scans all of Data\Tools\ for the exe — works regardless of subfolder structure.
     private string? FindExe() =>
-        _installDir is null || _exeName is null || !Directory.Exists(_installDir) ? null
-        : Directory.EnumerateFiles(_installDir, _exeName, SearchOption.AllDirectories)
+        _toolsDir is null || _exeName is null || !Directory.Exists(_toolsDir) ? null
+        : Directory.EnumerateFiles(_toolsDir, _exeName, SearchOption.AllDirectories)
                    .FirstOrDefault();
 
     public bool IsInstalled => FindExe() is not null;
@@ -120,16 +122,22 @@ public sealed partial class ToolItem : ObservableObject
         }
     }
 
+    private void RefreshState()
+    {
+        OnPropertyChanged(nameof(IsInstalled));
+        OnPropertyChanged(nameof(SubLabel));
+    }
+
     // ── Commands ──────────────────────────────────────────────────────────
     public RelayCommand  OpenCommand        { get; }
     public RelayCommand? OpenWebsiteCommand { get; }
 
     // ── Constructor: portable exe ─────────────────────────────────────────
     public ToolItem(string name, string description, string iconGlyph, WpfBrush tileBrush,
-                    string installDir, string exeName, string? websiteUrl = null)
+                    string toolsDir, string exeName, string? websiteUrl = null)
     {
         Name = name; Description = description; IconGlyph = iconGlyph; TileBrush = tileBrush;
-        _installDir = installDir; _exeName = exeName; WebsiteUrl = websiteUrl;
+        _toolsDir = toolsDir; _exeName = exeName; WebsiteUrl = websiteUrl;
 
         OpenCommand = new RelayCommand(OpenExe);
 
@@ -152,15 +160,17 @@ public sealed partial class ToolItem : ObservableObject
     private void OpenExe()
     {
         StatusText = "";
+        RefreshState();           // recheck — user may have added the exe since last click
+
         var exe = FindExe();
         if (exe is null)
         {
             try
             {
-                var rel = Path.GetRelativePath(AppContext.BaseDirectory, _installDir!);
+                var rel = Path.GetRelativePath(AppContext.BaseDirectory, _toolsDir!);
                 StatusText = $"Not found in {rel}";
             }
-            catch { StatusText = "Not installed — download from the website."; }
+            catch { StatusText = "Not found — download from the website."; }
             return;
         }
         try

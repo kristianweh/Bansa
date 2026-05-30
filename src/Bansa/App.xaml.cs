@@ -24,6 +24,7 @@ public partial class App : Application
         DataFolder = Path.Combine(exeDir, "Data");
 
         Directory.CreateDirectory(DataFolder);
+        Directory.CreateDirectory(Path.Combine(DataFolder, "Tools"));
 
         Settings = SettingsManager.Load();
 
