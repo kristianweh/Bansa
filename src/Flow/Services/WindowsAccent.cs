@@ -57,15 +57,19 @@ public static class WindowsAccent
 
         try
         {
+            // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 — dark title bar / system chrome
             int useDark = dark ? 1 : 0;
-            // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 on Win11
             DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
 
             // DWMWA_SYSTEMBACKDROP_TYPE = 38, value 2 = Mica
-            int backdrop = 2;
-            DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));
+            // NOTE: Mica backdrop changes how DWM composites the window and is
+            // known to break PrintScreen (OS-level screenshots) when the window
+            // is focused.  Skip it — the dark background from the theme already
+            // looks correct without the wallpaper-bleed effect.
+            // int backdrop = 2;
+            // DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));
 
-            // DWMWA_WINDOW_CORNER_PREFERENCE = 33, value 2 = Round
+            // DWMWA_WINDOW_CORNER_PREFERENCE = 33, value 2 = Round corners
             int corner = 2;
             DwmSetWindowAttribute(hwnd, 33, ref corner, sizeof(int));
         }

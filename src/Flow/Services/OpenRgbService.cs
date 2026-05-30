@@ -137,11 +137,13 @@ public sealed class OpenRgbService : IDisposable
                     Downloader.ExePath,
                     $"--server --server-port {port} --noGui")
                 {
-                    UseShellExecute  = false,
-                    CreateNoWindow   = true,
+                    // UseShellExecute = true mimics the user double-clicking the exe:
+                    // - avoids inheriting Flow's elevated admin token (which causes
+                    //   OpenRGB to attempt driver installs and crash)
+                    // - avoids CREATE_NO_WINDOW which breaks Qt's message-loop init
+                    // - --noGui prevents any visible window from appearing
+                    UseShellExecute  = true,
                     WindowStyle      = ProcessWindowStyle.Hidden,
-                    // Must be set so OpenRGB can find Qt5Core.dll and its other
-                    // dependencies which live alongside the exe, not in Flow's folder.
                     WorkingDirectory = Downloader.InstallDir,
                 }
             };

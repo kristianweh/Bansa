@@ -175,9 +175,6 @@ public partial class MainWindow : Window
                          ResizeMode == ResizeMode.CanResizeWithGrip;
         double border = canResize && WindowState != WindowState.Maximized ? 6.0 : 0.0;
 
-        // Caption buttons column is ~132 px wide on the right
-        const double captionBtnsWidth = 132;
-
         // Corners (checked first so they take priority over edges)
         if (border > 0)
         {
@@ -191,13 +188,8 @@ public partial class MainWindow : Window
             if (y > h - border)                     { handled = true; return (IntPtr)HTBOTTOM;       }
         }
 
-        // Title bar drag zone — top 40 px, everything left of caption buttons
-        if (y < 40 && x < w - captionBtnsWidth)
-        {
-            handled = true;
-            return (IntPtr)HTCAPTION;
-        }
-
+        // Title bar — let WindowChrome handle HTCAPTION so FancyZones'
+        // WM_NCHITTEST chain fires correctly. We only override the edges.
         return IntPtr.Zero;
     }
 
