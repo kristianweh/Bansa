@@ -141,14 +141,17 @@ public sealed class OpenRgbService : IDisposable
             {
                 StartInfo = new ProcessStartInfo(
                     Downloader.ExePath,
-                    $"--server --server-port {port} --noGui")
+                    $"--server --server-port {port}")
                 {
                     UseShellExecute        = false,
                     WorkingDirectory       = Downloader.InstallDir,
                     RedirectStandardOutput = true,
                     RedirectStandardError  = true,
-                    // Do NOT set CreateNoWindow — it's a console-app flag that
-                    // corrupts Qt's message-loop init for GUI applications.
+                    // Hide the OpenRGB GUI window — user manages everything through Flow.
+                    // SW_HIDE via STARTUPINFO is respected by Qt on startup.
+                    // Do NOT set CreateNoWindow — that's a console-subsystem flag and
+                    // corrupts Qt's message-loop initialization for GUI applications.
+                    WindowStyle            = System.Diagnostics.ProcessWindowStyle.Hidden,
                 },
                 EnableRaisingEvents = true,
             };
