@@ -10,31 +10,18 @@ namespace Flow;
 public partial class App : Application
 {
     /// <summary>
-    /// True when a "portable" marker file sits next to the exe, OR --portable was passed.
-    /// In portable mode everything lives in .\Data\ so the whole folder can be copied/moved.
+    /// Flow is always self-contained: everything lives in a "Data" subfolder
+    /// next to Flow.exe so the whole folder can be moved or deleted cleanly.
     /// </summary>
-    public static bool IsPortable { get; private set; }
-
     public static string DataFolder { get; private set; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Flow");
+        Path.Combine(AppContext.BaseDirectory, "Data");
 
     public static FlowSettings Settings { get; private set; } = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // ── Portable-mode detection ───────────────────────────────────────────
-        // Priority 1: --portable command-line flag
-        // Priority 2: a file named "portable" (any case, no extension required) next to the exe
         var exeDir = AppContext.BaseDirectory;
-        var hasFlag = e.Args.Any(a => a.Equals("--portable", StringComparison.OrdinalIgnoreCase));
-        var hasMarker = File.Exists(Path.Combine(exeDir, "portable")) ||
-                        File.Exists(Path.Combine(exeDir, "portable.txt")) ||
-                        File.Exists(Path.Combine(exeDir, ".portable"));
-        if (hasFlag || hasMarker)
-        {
-            IsPortable   = true;
-            DataFolder   = Path.Combine(exeDir, "Data");
-        }
+        DataFolder = Path.Combine(exeDir, "Data");
 
         Directory.CreateDirectory(DataFolder);
 

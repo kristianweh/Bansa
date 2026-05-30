@@ -137,9 +137,12 @@ public sealed class OpenRgbService : IDisposable
                     Downloader.ExePath,
                     $"--server --server-port {port} --noGui")
                 {
-                    UseShellExecute = false,
-                    CreateNoWindow  = true,
-                    WindowStyle     = ProcessWindowStyle.Hidden,
+                    UseShellExecute  = false,
+                    CreateNoWindow   = true,
+                    WindowStyle      = ProcessWindowStyle.Hidden,
+                    // Must be set so OpenRGB can find Qt5Core.dll and its other
+                    // dependencies which live alongside the exe, not in Flow's folder.
+                    WorkingDirectory = Downloader.InstallDir,
                 }
             };
             return _serverProcess.Start();
