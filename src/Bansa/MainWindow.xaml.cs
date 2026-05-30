@@ -365,7 +365,7 @@ public partial class MainWindow : Window
         try { UnregisterHotKey(new WindowInteropHelper(this).Handle, _hotKeyId); } catch { }
         try { _floatingGraph?.Close(); } catch { }
         try { _tray?.Dispose(); } catch { }
-        try { _toolsVm?.Dispose(); } catch { }
+        // _toolsVm has no disposable resources
         try { Vm.Dispose(); } catch { }
 
         // Save ShowFloatingGraph LAST so it wins over any value written by FloatingGraphWindow.Closed
