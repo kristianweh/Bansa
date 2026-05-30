@@ -91,19 +91,27 @@ public sealed partial class ToolItem : ObservableObject
     [ObservableProperty] private string _statusText = "";
 
     // ── Derived ───────────────────────────────────────────────────────────
-    public bool IsInstalled => _installDir is not null && _exeName is not null
-                            && File.Exists(Path.Combine(_installDir, _exeName));
+
+    /// Searches the tool folder recursively for the exe — handles any subfolder structure.
+    private string? FindExe() =>
+        _installDir is null || _exeName is null || !Directory.Exists(_installDir) ? null
+        : Directory.EnumerateFiles(_installDir, _exeName, SearchOption.AllDirectories)
+                   .FirstOrDefault();
+
+    public bool IsInstalled => FindExe() is not null;
 
     public string SubLabel
     {
         get
         {
             if (IsScript) return "Runs via PowerShell · no install needed";
-            if (IsInstalled)
+            var exe = FindExe();
+            if (exe is not null)
             {
                 try
                 {
-                    var rel = Path.GetRelativePath(AppContext.BaseDirectory, _installDir!);
+                    var rel = Path.GetRelativePath(AppContext.BaseDirectory,
+                                  Path.GetDirectoryName(exe)!);
                     return $"Installed · {rel}";
                 }
                 catch { return "Installed"; }
@@ -144,7 +152,8 @@ public sealed partial class ToolItem : ObservableObject
     private void OpenExe()
     {
         StatusText = "";
-        if (!IsInstalled)
+        var exe = FindExe();
+        if (exe is null)
         {
             try
             {
@@ -156,11 +165,10 @@ public sealed partial class ToolItem : ObservableObject
         }
         try
         {
-            var exe = Path.Combine(_installDir!, _exeName!);
             Process.Start(new ProcessStartInfo(exe)
             {
                 UseShellExecute  = true,
-                WorkingDirectory = _installDir!,
+                WorkingDirectory = Path.GetDirectoryName(exe)!,
             });
         }
         catch (Exception ex) { StatusText = $"Launch failed: {ex.Message}"; }
