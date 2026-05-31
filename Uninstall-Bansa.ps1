@@ -1,65 +1,94 @@
-﻿#requires -RunAsAdministrator
+#requires -RunAsAdministrator
 <#
     Uninstall-Bansa.ps1
-    ------------------
-    Standalone cleanup script. Removes every Windows change Bansa has made,
-    even if Bansa itself is broken / missing / won't start.
+    -------------------
+    Standalone cleanup script. Removes every Windows change Bansa (or its
+    predecessor "Flow") has made, even if the app itself is broken / missing.
 
     Run from an elevated PowerShell prompt:
         powershell -ExecutionPolicy Bypass -File .\Uninstall-Bansa.ps1
 #>
+
+$ErrorActionPreference = "Continue"
 
 Write-Host ""
 Write-Host "Bansa — Standalone Cleanup" -ForegroundColor Cyan
 Write-Host "---------------------------"
 Write-Host ""
 
-# 1. Remove all firewall rules tagged 'Bansa-'
-$rules = Get-NetFirewallRule -DisplayName 'Bansa-*' -ErrorAction SilentlyContinue
-if ($rules) {
-    Write-Host "Removing $($rules.Count) Bansa firewall rule(s):" -ForegroundColor Yellow
-    foreach ($r in $rules) {
-        Write-Host "  - $($r.DisplayName)"
+# ── 1. Firewall rules ─────────────────────────────────────────────────────────
+$comRules = (New-Object -ComObject HNetCfg.FwPolicy2).Rules
+$toRemove = @($comRules | Where-Object {
+    $_.Name -like "*Bansa*" -or $_.Name -like "*Flow*"
+})
+if ($toRemove.Count -gt 0) {
+    Write-Host "Removing $($toRemove.Count) firewall rule(s):" -ForegroundColor Yellow
+    foreach ($r in $toRemove) {
+        Write-Host "  - $($r.Name)"
+        try { $comRules.Remove($r.Name) } catch { Write-Host "    (already gone)" }
     }
-    $rules | Remove-NetFirewallRule
+    Write-Host "  Done." -ForegroundColor Green
 } else {
-    Write-Host "No Bansa firewall rules found." -ForegroundColor Green
+    Write-Host "No Bansa / Flow firewall rules." -ForegroundColor Green
 }
 
-# 2. Remove all QoS policies tagged 'Bansa-'
-$policies = Get-NetQosPolicy -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Bansa-*' }
-if ($policies) {
-    Write-Host ""
-    Write-Host "Removing $($policies.Count) Bansa QoS policy(s):" -ForegroundColor Yellow
-    foreach ($p in $policies) {
-        Write-Host "  - $($p.Name)"
+# ── 2. QoS registry policies ──────────────────────────────────────────────────
+Write-Host ""
+$qosBase = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\QoS"
+$qosPolicies = Get-ChildItem $qosBase -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSChildName -like "*Bansa*" -or $_.PSChildName -like "*Flow*" }
+if ($qosPolicies) {
+    Write-Host "Removing $(@($qosPolicies).Count) QoS policy(s):" -ForegroundColor Yellow
+    foreach ($p in $qosPolicies) {
+        Write-Host "  - $($p.PSChildName)"
+        try { Remove-Item $p.PSPath -Recurse -Force } catch { Write-Host "    (already gone)" }
     }
-    $policies | Remove-NetQosPolicy -Confirm:$false
+    Write-Host "  Done." -ForegroundColor Green
 } else {
-    Write-Host "No Bansa QoS policies found." -ForegroundColor Green
+    Write-Host "No Bansa / Flow QoS policies." -ForegroundColor Green
 }
 
-# 3. Stop any leftover ETW session (e.g. after a Bansa crash)
-$session = Get-EtwTraceSession -Name 'Bansa-KernelNetSession' -ErrorAction SilentlyContinue
-if ($session) {
-    Write-Host ""
-    Write-Host "Stopping orphaned ETW session 'Bansa-KernelNetSession'..." -ForegroundColor Yellow
-    logman stop Bansa-KernelNetSession -ets | Out-Null
+# ── 3. Task Scheduler ─────────────────────────────────────────────────────────
+Write-Host ""
+$tasks = Get-ScheduledTask -ErrorAction SilentlyContinue |
+    Where-Object { $_.TaskName -like "*Bansa*" -or $_.TaskName -like "*Flow*" }
+if ($tasks) {
+    Write-Host "Removing $(@($tasks).Count) scheduled task(s):" -ForegroundColor Yellow
+    foreach ($t in $tasks) {
+        Write-Host "  - $($t.TaskName)"
+        Unregister-ScheduledTask -TaskName $t.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    Write-Host "  Done." -ForegroundColor Green
+} else {
+    Write-Host "No Bansa / Flow scheduled tasks." -ForegroundColor Green
 }
 
-# 4. Offer to delete the data folder
-$dataFolder = Join-Path $env:LocalAppData "Bansa"
-if (Test-Path $dataFolder) {
-    Write-Host ""
-    $answer = Read-Host "Delete history & settings folder at $dataFolder ? [y/N]"
-    if ($answer -eq 'y' -or $answer -eq 'Y') {
-        Remove-Item -Recurse -Force $dataFolder
-        Write-Host "Data folder removed." -ForegroundColor Green
-    } else {
-        Write-Host "Data folder preserved." -ForegroundColor Green
+# ── 4. ETW sessions ───────────────────────────────────────────────────────────
+Write-Host ""
+foreach ($name in @("Bansa-KernelNetSession", "Flow-KernelNetSession")) {
+    $out = logman query $name -ets 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Stopping orphaned ETW session '$name'…" -ForegroundColor Yellow
+        logman stop $name -ets | Out-Null
+        Write-Host "  Done." -ForegroundColor Green
+    }
+}
+
+# ── 5. Data folders ───────────────────────────────────────────────────────────
+Write-Host ""
+foreach ($name in @("Bansa", "Flow")) {
+    $folder = Join-Path $env:LOCALAPPDATA $name
+    if (Test-Path $folder) {
+        $answer = Read-Host "Delete data folder '$folder'? [y/N]"
+        if ($answer -eq 'y' -or $answer -eq 'Y') {
+            Remove-Item $folder -Recurse -Force
+            Write-Host "  Removed." -ForegroundColor Green
+        } else {
+            Write-Host "  Preserved." -ForegroundColor Green
+        }
     }
 }
 
 Write-Host ""
-Write-Host "Cleanup complete. Bansa has left no further trace on the system." -ForegroundColor Cyan
+Write-Host "Cleanup complete." -ForegroundColor Cyan
 Write-Host ""

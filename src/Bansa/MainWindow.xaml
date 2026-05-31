@@ -681,7 +681,7 @@
                                     </Style>
                                 </DataGrid.RowStyle>
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="App" Width="*" MinWidth="180">
+                                    <DataGridTemplateColumn Header="App" Width="160" MinWidth="100">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -1013,6 +1013,7 @@
                                   ItemsSource="{Binding AppsView}"
                                   SelectedItem="{Binding SelectedApp}"
                                   AutoGenerateColumns="False"
+                                  PreviewMouseRightButtonDown="OnAppGridHeaderRightClick"
                                   HeadersVisibility="Column"
                                   GridLinesVisibility="None"
                                   CanUserAddRows="False" CanUserDeleteRows="False"
@@ -1033,7 +1034,7 @@
                                 </Style>
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="App" Width="*" SortMemberPath="Name" MinWidth="220">
+                                <DataGridTemplateColumn Header="App" Width="200" SortMemberPath="Name" MinWidth="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -1291,8 +1292,7 @@
                     <StackPanel MaxWidth="860" HorizontalAlignment="Left" Margin="0,8,0,0">
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                            <Border Width="4" CornerRadius="2"
-                                    Margin="0,4,12,4"
+                            <Border Width="4" CornerRadius="2" Margin="0,4,12,4"
                                     Background="{DynamicResource AccentGradientVerticalBrush}" />
                             <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" />
                         </StackPanel>
@@ -1307,59 +1307,16 @@
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
                                          Tag="network" Content="Network"
                                          Click="OnSettingsTabClick" />
-                            <RadioButton x:Name="SettingsTabBtnTest"
+                            <RadioButton x:Name="SettingsTabBtnAppearance"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
-                                         Tag="test" Content="Test"
+                                         Tag="appearance" Content="Appearance"
                                          Click="OnSettingsTabClick" />
                         </WrapPanel>
 
-                        <!-- ══ GENERAL tab: Appearance · Shortcuts · System ══ -->
+                        <!-- ══ GENERAL tab: Units · Shortcut · Behavior · System ══ -->
                         <StackPanel x:Name="SettingsTabGeneral">
 
-                            <!-- Appearance -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
-                                    <Grid Margin="0,0,0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Dark theme" VerticalAlignment="Center" />
-                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
-                                                      IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
-                                                      Click="OnThemeToggleClick" />
-                                    </Grid>
-                                    <CheckBox Content="Use Windows accent color" Margin="0,10,0,0"
-                                              IsChecked="{Binding UseWindowsAccent}" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="Colors" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
-                                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
-                                               TextWrapping="Wrap"
-                                               Text="Pick colors for the live graph and the tray icon. Click a swatch to apply." />
-                                    <TextBlock Text="Graph — Download" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
-                                    <ItemsControl x:Name="DownGraphSwatches">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-                                    <TextBlock Text="Graph — Upload" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="UpGraphSwatches">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-                                    <TextBlock Text="Tray icon — Down line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="TrayDownSwatches">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-                                    <TextBlock Text="Tray icon — Up line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="TrayUpSwatches">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-
+                            <!-- Units -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Units" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
@@ -1374,7 +1331,7 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Shortcuts -->
+                            <!-- Global keyboard shortcut -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Global keyboard shortcut" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
@@ -1398,31 +1355,84 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- System -->
+                            <!-- Behavior (startup + window) — all three toggles in one card -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Startup" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
-                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,12"
-                                               Text="Launch Bansa automatically when you log in. Because Bansa needs administrator rights for ETW monitoring, startup is registered as a Task Scheduler entry (not a registry run-key) so elevation is handled correctly." />
+                                    <TextBlock Text="Behavior" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,12" />
+
+                                    <!-- Launch on startup -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Launch on Windows startup" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="AutoStartStatusLabel"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       FontSize="11" Margin="0,2,0,0" Text="Checking…" />
+                                        </StackPanel>
+                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
+                                                      x:Name="AutoStartToggle"
+                                                      Click="OnAutoStartToggleClick" />
+                                    </Grid>
+
+                                    <Separator Margin="0,0,0,12" />
+
+                                    <!-- Start minimized -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Start minimized to tray" FontWeight="SemiBold" />
+                                            <TextBlock Foreground="{DynamicResource MutedTextBrush}"
+                                                       FontSize="11" Margin="0,2,0,0"
+                                                       Text="Bansa launches hidden in the tray and only shows on hotkey or tray click." />
+                                        </StackPanel>
+                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
+                                                      x:Name="StartMinimizedToggle"
+                                                      Click="OnStartMinimizedToggleClick" />
+                                    </Grid>
+
+                                    <Separator Margin="0,0,0,12" />
+
+                                    <!-- Minimize on close -->
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="Launch Bansa on Windows startup" FontWeight="SemiBold" />
-                                            <TextBlock x:Name="AutoStartStatusLabel"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                            <TextBlock Text="Minimize to tray on close" FontWeight="SemiBold" />
+                                            <TextBlock Foreground="{DynamicResource MutedTextBrush}"
                                                        FontSize="11" Margin="0,2,0,0"
-                                                       Text="Checking…" />
+                                                       Text="Pressing × sends Bansa to the system tray instead of exiting. Use Quit in the tray menu to close fully." />
                                         </StackPanel>
                                         <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
-                                                      x:Name="AutoStartToggle"
-                                                      Click="OnAutoStartToggleClick" />
+                                                      x:Name="MinimizeOnCloseToggle"
+                                                      Click="OnMinimizeOnCloseToggleClick" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
 
+                            <!-- Settings backup: export / import -->
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Settings backup" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,14"
+                                               Text="Export your full configuration to a JSON file — limits, profiles, colors, ping targets, and all preferences. Import to restore a backup or transfer settings to another machine." />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Export settings…" Padding="14,7" Margin="0,0,10,0"
+                                                Click="OnExportSettings" />
+                                        <Button Content="Import settings…" Padding="14,7"
+                                                Click="OnImportSettings" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- System changes -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="System changes" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
@@ -1437,53 +1447,8 @@
 
                         </StackPanel>
 
-                        <!-- ══ NETWORK tab: Connection · Profiles · Upload Cap · Monitoring ══ -->
-                        <StackPanel x:Name="SettingsTabNetworkGroup" Visibility="Collapsed">
-
-                            <!-- Connection Speed -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="Connection Speed" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
-                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,16"
-                                               Text="Enter your ISP speeds in Mbps. Bansa uses these to generate contextual bandwidth limit suggestions when you throttle a specific app." />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="16" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="↑ UPLOAD" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource ChartUpBrush}" Margin="0,0,0,6" />
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="ConnectionUploadBox" Text="0" />
-                                                <TextBlock Grid.Column="1" Text="Mbps" VerticalAlignment="Center"
-                                                           Margin="8,0,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
-                                            </Grid>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2">
-                                            <TextBlock Text="↓ DOWNLOAD" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource ChartDownBrush}" Margin="0,0,0,6" />
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="ConnectionDownloadBox" Text="0" />
-                                                <TextBlock Grid.Column="1" Text="Mbps" VerticalAlignment="Center"
-                                                           Margin="8,0,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
-                                            </Grid>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Button Content="Save" HorizontalAlignment="Left" Margin="0,16,0,0"
-                                            Padding="20,8" Style="{StaticResource AccentButton}"
-                                            Click="OnSaveConnectionSpeed" />
-                                </StackPanel>
-                            </Border>
+                        <!-- ══ NETWORK tab: Limit profiles · Global cap · Connection speed · Ping · Speed test ══ -->
+                        <StackPanel x:Name="SettingsTabNetwork" Visibility="Collapsed">
 
                             <!-- Limit Profiles -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
@@ -1559,8 +1524,7 @@
                                     </StackPanel>
                                     <TextBlock Text="0 = no cap. Changes take effect immediately and survive reboot." FontSize="11"
                                                Foreground="{DynamicResource MutedTextBrush}" />
-
-                                    <!-- QoS warning banner — only visible when Psched is not bound to an adapter -->
+                                    <!-- QoS warning banner -->
                                     <Border Visibility="{Binding QosWarningVisible, Converter={StaticResource BoolToVis}}"
                                             Background="#22F59E0B" BorderBrush="#55F59E0B" BorderThickness="1"
                                             CornerRadius="8" Padding="12,10" Margin="0,12,0,0">
@@ -1581,68 +1545,151 @@
                                                        FontSize="11" Foreground="#F59E0B" Margin="0,0,0,8" />
                                             <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
                                                 <Button Content="Open Network Connections" Padding="10,5" Margin="0,0,8,0"
-                                                        Click="OnOpenNetworkConnections"
-                                                        ToolTip="Opens ncpa.cpl — right-click your adapter → Properties → tick QoS Packet Scheduler" />
+                                                        Click="OnOpenNetworkConnections" />
                                                 <Button Content="Re-check" Padding="10,5"
-                                                        Command="{Binding RefreshQosStatusCommand}"
-                                                        ToolTip="Re-run the QoS diagnosis after enabling the scheduler" />
+                                                        Command="{Binding RefreshQosStatusCommand}" />
                                             </StackPanel>
                                         </Grid>
                                     </Border>
                                 </StackPanel>
                             </Border>
 
-                            <!-- Monitoring / Filtering -->
+                            <!-- Connection Speed -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Filtering" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
-                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
-                                               Text="Hide apps below a bandwidth threshold to keep the list clean. Pinned / blocked / limited apps are always visible regardless of this setting." />
-                                    <TextBlock Text="{Binding ThresholdLabel}" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,0,6" />
-                                    <Slider Minimum="0" Maximum="500" Value="{Binding HideBelowKBps}" TickFrequency="5"
-                                            Width="360" HorizontalAlignment="Left" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Connection Speed" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <RadioButton x:Name="SpeedUnitMbpsRadio" GroupName="SpeedUnit"
+                                                         Content="Mbps" IsChecked="True"
+                                                         Click="OnSpeedUnitChanged" Margin="0,0,12,0" />
+                                            <RadioButton x:Name="SpeedUnitGbpsRadio" GroupName="SpeedUnit"
+                                                         Content="Gbps" Click="OnSpeedUnitChanged" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,16"
+                                               Text="Enter your ISP speeds. Bansa uses these to generate contextual bandwidth limit suggestions when you throttle a specific app." />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="16" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="↑ UPLOAD" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource ChartUpBrush}" Margin="0,0,0,6" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="ConnectionUploadBox" Text="0" />
+                                                <TextBlock x:Name="SpeedUnitLabel" Grid.Column="1" Text="Mbps"
+                                                           VerticalAlignment="Center" Margin="8,0,0,0"
+                                                           Foreground="{DynamicResource SubtleTextBrush}" />
+                                            </Grid>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="↓ DOWNLOAD" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource ChartDownBrush}" Margin="0,0,0,6" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="ConnectionDownloadBox" Text="0" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ElementName=SpeedUnitLabel, Path=Text}"
+                                                           VerticalAlignment="Center" Margin="8,0,0,0"
+                                                           Foreground="{DynamicResource SubtleTextBrush}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Button Content="Save" HorizontalAlignment="Left" Margin="0,16,0,0"
+                                            Padding="20,8" Style="{StaticResource AccentButton}"
+                                            Click="OnSaveConnectionSpeed" />
                                 </StackPanel>
                             </Border>
-
-                        </StackPanel>
-
-                        <!-- ══ TEST tab: Ping · Speed Test ══ -->
-                        <StackPanel x:Name="SettingsTabTestGroup" Visibility="Collapsed">
 
                             <!-- Ping Monitor -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Ping Monitor" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,14"
-                                               Text="Select a target to monitor latency. Labels replace the target address in the sidebar. Changes take effect immediately." />
-                                    <TextBlock Text="Active target" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,6" />
+                                               Text="Select a target to monitor latency. Labels replace the target address in the sidebar. Selecting a target and clicking Set active applies it immediately." />
+                                    <TextBlock Text="Select target" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,6" />
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                        <ComboBox x:Name="PingTargetCombo" Width="210" Margin="0,0,10,0"
+                                        <ComboBox x:Name="PingTargetCombo" Width="260" Margin="0,0,10,0"
                                                   SelectionChanged="OnPingTargetSelectionChanged" />
-                                        <Button Content="Set active" Padding="10,5" Click="OnSetPingTarget"
-                                                ToolTip="Apply selected target immediately" />
+                                        <Button Content="Set active" Padding="10,5" Click="OnSetPingTarget" />
                                     </StackPanel>
                                     <TextBlock Text="Display label" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,6" />
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                        <TextBox x:Name="PingLabelBox" Width="210" Margin="0,0,10,0"
-                                                 ToolTip="Friendly name shown in the sidebar instead of the IP/hostname" />
-                                        <Button Content="Save label" Padding="10,5" Click="OnSavePingLabel"
-                                                ToolTip="Save this label for the selected target" />
+                                        <TextBox x:Name="PingLabelBox" Width="260" Margin="0,0,10,0" />
+                                        <Button Content="Save label" Padding="10,5" Click="OnSavePingLabel" />
                                     </StackPanel>
-                                    <TextBlock Text="Add target" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,6" />
+                                    <TextBlock Text="Add custom target" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,6" />
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBox x:Name="NewPingTargetBox" Width="210" Margin="0,0,8,0"
-                                                 ToolTip="Enter an IP address or hostname" />
-                                        <Button Content="Add" Padding="10,5" Margin="0,0,8,0"
-                                                Click="OnAddPingTarget" ToolTip="Add to target list and switch to it" />
-                                        <Button Content="Remove selected" Padding="10,5"
-                                                Click="OnRemovePingTarget" ToolTip="Remove selected target from list" />
+                                        <TextBox x:Name="NewPingTargetBox" Width="200" Margin="0,0,8,0" />
+                                        <Button Content="Add &amp; switch" Padding="10,5" Margin="0,0,8,0" Click="OnAddPingTarget" />
+                                        <Button Content="Remove selected" Padding="10,5" Click="OnRemovePingTarget" />
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
 
-                            <!-- Speed Test -->
+                            <!-- Verify limits (Speed Test) -->
                             <views:SpeedTestView x:Name="SpeedPanel" />
+
+                        </StackPanel>
+
+                        <!-- ══ APPEARANCE tab: Theme · Colors ══ -->
+                        <StackPanel x:Name="SettingsTabAppearance" Visibility="Collapsed">
+
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Dark theme" VerticalAlignment="Center" />
+                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
+                                                      IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
+                                                      Click="OnThemeToggleClick" />
+                                    </Grid>
+                                    <CheckBox Content="Use Windows accent color"
+                                              IsChecked="{Binding UseWindowsAccent}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Colors" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
+                                               TextWrapping="Wrap"
+                                               Text="Pick colors for the live graph and the tray icon. Click a swatch to apply." />
+                                    <TextBlock Text="Graph — Download" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
+                                    <ItemsControl x:Name="DownGraphSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Graph — Upload" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="UpGraphSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Tray icon — Down line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="TrayDownSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Tray icon — Up line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="TrayUpSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
 
                         </StackPanel>
 

@@ -47,7 +47,7 @@ public sealed class TrayIconManager : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X, Y; }
 
-    public TrayIconManager(Window ownerWindow)
+    public TrayIconManager(Window ownerWindow, Action? onQuit = null)
     {
         _ownerWindow = ownerWindow;
         _iconSize = ClampSize(App.Settings?.TrayIconSize ?? 96);
@@ -59,7 +59,13 @@ public sealed class TrayIconManager : IDisposable
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("Show Bansa", null, (_, _) => ShowMainWindow());
         menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add("Quit", null, (_, _) => Application.Current.Shutdown());
+        menu.Items.Add("Quit", null, (_, _) =>
+        {
+            if (onQuit != null)
+                Application.Current.Dispatcher.Invoke(onQuit);
+            else
+                Application.Current.Shutdown();
+        });
         _tray.ContextMenuStrip = menu;
 
         _popup = new TrayPopupWindow();

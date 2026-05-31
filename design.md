@@ -18,7 +18,8 @@
 | Prioritize game traffic | QoS Policy with DSCP value | Same as above | Same as above |
 | Read process bandwidth | ETW kernel session (read-only) | Memory only | Session ends when Bansa exits |
 | Read active connections | `GetExtendedTcpTable` / `GetExtendedUdpTable` | Read-only API call | No state created |
-| Store history | SQLite database | `%LocalAppData%\Bansa\Bansa.db` | Delete the folder |
+| Register auto-start task | Windows Task Scheduler (`schtasks.exe`) | Task Scheduler, task name `Bansa_BandwidthMonitor_AutoStart` | Toggle off in Settings → General, or `schtasks /delete /tn "Bansa_BandwidthMonitor_AutoStart" /f` |
+| Store history | SQLite database | `%LocalAppData%\Bansa\bansa.db` | Delete the folder |
 | App settings | JSON file | `%LocalAppData%\Bansa\settings.json` | Delete the folder |
 
 That's the complete list. Nothing else gets written to disk, the registry, or the network stack.
@@ -60,23 +61,25 @@ No background service. No driver. No IPC layer needed (everything runs in one pr
 - **Delayed priority mode.** No equivalent without a driver. We can fake it via rate limit + low DSCP value.
 - **Deep packet inspection.** Not feasible from user-mode. Out of scope.
 
-## MVP feature checklist
+## Feature status (v0.5)
 
-- [ ] Live process list with up/down rate (KB/s) and connection counts
-- [ ] Expand a process to see its active connections (remote IP/port/protocol)
-- [ ] Right-click → Block app (firewall rule)
-- [ ] Right-click → Limit to N KB/s (QoS policy)
-- [ ] Right-click → Remove limits / unblock
-- [ ] History tab with date-range chart per app
-- [ ] Game Mode preset: detect a configured game, demote everything else
-- [ ] Settings tab with one-click "Clean up & remove all Bansa changes"
-- [ ] Tray icon with current totals
+- ✅ Live process list with up/down rate and connection counts
+- ✅ Double-click to see individual processes and connections
+- ✅ Right-click → Block / Limit / Unblock / Remove limits
+- ✅ History tab with date-range totals per app + activity log
+- ✅ Gaming Mode — global upload cap + DSCP prioritization
+- ✅ Settings with one-click "Clean up & remove all Bansa changes"
+- ✅ Tray icon with live rates, hover popup, ping indicator
+- ✅ Hardware monitor panel (CPU / GPU / RAM temps, loads, clocks)
+- ✅ Floating graph window — detachable overlay
+- ✅ Auto-start with Windows (Task Scheduler, elevated)
+- ✅ Settings export / import
 
-## Out of scope for v1
+## Out of scope
 
 - Remote management
 - Per-network-adapter rules
 - Wi-Fi SSID-based rules
 - Time-of-day rules
 - Group/tag-based bulk operations
-- Auto-start with Windows (can be added trivially via Startup folder later)
+- Kernel-level smooth pacing (would require a callout driver — explicitly out of scope)

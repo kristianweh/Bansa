@@ -13,6 +13,7 @@ namespace Bansa.Services;
 public sealed class HistoryStore : IDisposable
 {
     private readonly SqliteConnection _conn;
+    private readonly object _lock = new();
 
     public HistoryStore()
     {
@@ -67,7 +68,8 @@ public sealed class HistoryStore : IDisposable
     {
         if (snapshot.Count == 0) return;
         var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var tx = _conn.BeginTransaction();
         using var cmd = _conn.CreateCommand();
         cmd.Transaction = tx;
@@ -89,6 +91,7 @@ public sealed class HistoryStore : IDisposable
             cmd.ExecuteNonQuery();
         }
         tx.Commit();
+        } // lock
     }
 
     /// <summary>
@@ -98,7 +101,8 @@ public sealed class HistoryStore : IDisposable
     {
         var from = new DateTimeOffset(fromUtc, TimeSpan.Zero).ToUnixTimeSeconds();
         var to = new DateTimeOffset(toUtc, TimeSpan.Zero).ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = @"
             SELECT process, SUM(bytes_in), SUM(bytes_out)
@@ -116,6 +120,7 @@ public sealed class HistoryStore : IDisposable
             list.Add((r.GetString(0), r.GetInt64(1), r.GetInt64(2)));
         }
         return list;
+        } // lock
     }
 
     /// <summary>
@@ -127,7 +132,8 @@ public sealed class HistoryStore : IDisposable
     {
         var from = new DateTimeOffset(fromUtc, TimeSpan.Zero).ToUnixTimeSeconds();
         var to   = new DateTimeOffset(toUtc,   TimeSpan.Zero).ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = @"
             SELECT (ts / 3600) * 3600 AS hour, SUM(bytes_in), SUM(bytes_out)
@@ -148,6 +154,7 @@ public sealed class HistoryStore : IDisposable
         while (r.Read())
             list.Add((r.GetInt64(0), r.GetInt64(1), r.GetInt64(2)));
         return list;
+        } // lock
     }
 
     /// <summary>
@@ -163,7 +170,8 @@ public sealed class HistoryStore : IDisposable
                        TimeZoneInfo.Local.GetUtcOffset(todayLocal))
                        .ToUnixTimeSeconds();
         var to   = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = @"
             SELECT COALESCE(SUM(bytes_in), 0), COALESCE(SUM(bytes_out), 0)
@@ -183,6 +191,7 @@ public sealed class HistoryStore : IDisposable
             return (r.GetInt64(0), r.GetInt64(1));
         }
         return (0, 0);
+        } // lock
     }
 
     // ── Activity log ────────────────────────────────────────────────────────
@@ -196,6 +205,8 @@ public sealed class HistoryStore : IDisposable
         var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         try
         {
+            lock (_lock)
+            {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = @"
                 INSERT INTO activity_log(ts, app, action, detail)
@@ -205,6 +216,7 @@ public sealed class HistoryStore : IDisposable
             cmd.Parameters.AddWithValue("$action", action);
             cmd.Parameters.AddWithValue("$detail", (object?)detail ?? DBNull.Value);
             cmd.ExecuteNonQuery();
+            } // lock
         }
         catch { }
     }
@@ -218,7 +230,8 @@ public sealed class HistoryStore : IDisposable
     {
         var from = new DateTimeOffset(fromUtc, TimeSpan.Zero).ToUnixTimeSeconds();
         var to   = new DateTimeOffset(toUtc,   TimeSpan.Zero).ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = @"
             SELECT ts, app, action, detail
@@ -237,6 +250,7 @@ public sealed class HistoryStore : IDisposable
             list.Add((dt, r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3)));
         }
         return list;
+        } // lock
     }
 
     // ── Rollup ──────────────────────────────────────────────────────────────
@@ -248,7 +262,8 @@ public sealed class HistoryStore : IDisposable
     public void Rollup()
     {
         var cutoff = DateTimeOffset.UtcNow.AddHours(-24).ToUnixTimeSeconds();
-
+        lock (_lock)
+        {
         using var tx = _conn.BeginTransaction();
         using (var cmd = _conn.CreateCommand())
         {
@@ -270,6 +285,7 @@ public sealed class HistoryStore : IDisposable
             cmd.ExecuteNonQuery();
         }
         tx.Commit();
+        } // lock
     }
 
     public void Dispose()

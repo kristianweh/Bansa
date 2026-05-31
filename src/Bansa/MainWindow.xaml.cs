@@ -76,6 +76,13 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush _chartTickBrush  = FrozenBrush(Color.FromArgb(40, 255, 255, 255));
     private static readonly SolidColorBrush _chartCrosshairDimBrush = FrozenBrush(Color.FromArgb(130, 200, 210, 230));
 
+    // Cached dash arrays — allocated once, reused across every chart redraw
+    private static readonly DoubleCollection _dashFour  = Frozen(new DoubleCollection { 4, 4 });
+    private static readonly DoubleCollection _dashSix   = Frozen(new DoubleCollection { 6, 3 });
+    private static readonly DoubleCollection _dashTwo   = Frozen(new DoubleCollection { 2, 2 });
+
+    private static DoubleCollection Frozen(DoubleCollection dc) { dc.Freeze(); return dc; }
+
     private static SolidColorBrush FrozenBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
 
     // Color-dependent chart brushes — rebuilt only when user changes color in settings
@@ -85,6 +92,8 @@ public partial class MainWindow : Window
     // Shutdown guard — prevents the FloatingGraphWindow.Closed inline handler from saving
     // ShowFloatingGraph=false while OnClosing is already handling the final correct save.
     private bool _isClosing;
+    // Set by the tray "Quit" action so OnClosing knows to skip MinimizeOnClose.
+    private bool _forceClose;
 
     // Global hotkey (Ctrl+Shift+<key>)
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -256,7 +265,11 @@ public partial class MainWindow : Window
 
         try
         {
-            _tray = new TrayIconManager(this);
+            _tray = new TrayIconManager(this, onQuit: () =>
+            {
+                _forceClose = true;
+                Application.Current.Shutdown();
+            });
             Vm.TraySnapshot += (down, up, ping, history, apps) =>
             {
                 Dispatcher.InvokeAsync(() =>
@@ -328,15 +341,22 @@ public partial class MainWindow : Window
         }
         PopulatePingTargetCombo();
 
-        // Restore sort column + direction from settings (default: BytesInPerSec DESC)
+        // Restore sort column + direction and column widths/visibility
         RestoreAppGridSort();
+        RestoreAppGridColumns();
 
         // Open floating graph if it was visible in the last session
         if (App.Settings.ShowFloatingGraph)
             OpenFloatingGraph();
 
-        // Init auto-start toggle (reads Task Scheduler — fast synchronous query)
+        // Init window-behaviour and auto-start toggles
+        InitBehaviourToggles();
         InitAutoStartToggle();
+
+        // Start minimized if the user set that preference
+        if (App.Settings.StartMinimizedToTray)
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() => WindowState = WindowState.Minimized));
 
         // Wire hardware monitor panel live updates
         InitHardwarePanel();
@@ -354,6 +374,14 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // If "minimize on close" is on and this isn't a deliberate quit, send to tray instead.
+        if (App.Settings.MinimizeOnClose && !_forceClose)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
         // Signal that we're shutting down — the FloatingGraphWindow.Closed inline handler
         // checks this flag and skips its ShowFloatingGraph=false save so we can write the
         // correct value at the very end of this method.
@@ -367,6 +395,9 @@ public partial class MainWindow : Window
         try { _tray?.Dispose(); } catch { }
         // _toolsVm has no disposable resources
         try { Vm.Dispose(); } catch { }
+
+        // Persist column layout before final settings write
+        SaveAppGridColumns();
 
         // Save ShowFloatingGraph LAST so it wins over any value written by FloatingGraphWindow.Closed
         App.Settings.ShowFloatingGraph = floatWasOpen;
@@ -433,7 +464,7 @@ public partial class MainWindow : Window
             {
                 X1 = 0, Y1 = y, X2 = w, Y2 = y,
                 Stroke = _chartGridBrush, StrokeThickness = 1,
-                StrokeDashArray = new DoubleCollection { 4, 4 }
+                StrokeDashArray = _dashFour
             });
             long labelVal = (long)(sharedPeak * (4 - li) / 4.0);
             var lbl = new TextBlock
@@ -477,7 +508,7 @@ public partial class MainWindow : Window
                 {
                     X1 = 0, Y1 = capY, X2 = w, Y2 = capY,
                     Stroke = upStroke, StrokeThickness = 1.5, Opacity = 0.7,
-                    StrokeDashArray = new DoubleCollection { 6, 3 }
+                    StrokeDashArray = _dashSix
                 });
                 var capLbl = new TextBlock
                 {
@@ -755,23 +786,43 @@ public partial class MainWindow : Window
 
     // ── Ping target management ────────────────────────────────────────────────
 
+    // Lightweight display wrapper so the ComboBox shows "Label (IP)" while
+    // code can still extract the raw IP/hostname.
+    private sealed class PingTargetItem
+    {
+        public string Target  { get; }
+        public string Display { get; }
+        public PingTargetItem(string target, string? label)
+        {
+            Target  = target;
+            Display = string.IsNullOrEmpty(label) ? target : $"{label}  ({target})";
+        }
+        public override string ToString() => Display;
+    }
+
+    private PingTargetItem? SelectedPingItem =>
+        PingTargetCombo.SelectedItem as PingTargetItem;
+
     private void PopulatePingTargetCombo()
     {
-        PingTargetCombo.SelectionChanged -= OnPingTargetSelectionChanged;  // prevent re-entry
+        PingTargetCombo.SelectionChanged -= OnPingTargetSelectionChanged;
         PingTargetCombo.Items.Clear();
         foreach (var t in App.Settings.PingTargets)
-            PingTargetCombo.Items.Add(t);
-        var idx = App.Settings.PingTargets.IndexOf(App.Settings.PingTarget);
+        {
+            App.Settings.PingTargetLabels.TryGetValue(t, out var lbl);
+            PingTargetCombo.Items.Add(new PingTargetItem(t, lbl));
+        }
+        var idx = App.Settings.PingTargets
+            .FindIndex(t => string.Equals(t, App.Settings.PingTarget, StringComparison.OrdinalIgnoreCase));
         PingTargetCombo.SelectedIndex = idx >= 0 ? idx : (App.Settings.PingTargets.Count > 0 ? 0 : -1);
         PingTargetCombo.SelectionChanged += OnPingTargetSelectionChanged;
-        // Sync label textbox to whichever target is now selected
         SyncPingLabelBox();
     }
 
     private void SyncPingLabelBox()
     {
-        if (PingTargetCombo.SelectedItem is string target &&
-            App.Settings.PingTargetLabels.TryGetValue(target, out var lbl))
+        var item = SelectedPingItem;
+        if (item != null && App.Settings.PingTargetLabels.TryGetValue(item.Target, out var lbl))
             PingLabelBox.Text = lbl;
         else
             PingLabelBox.Text = "";
@@ -779,15 +830,17 @@ public partial class MainWindow : Window
 
     private void OnPingTargetSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // Update label textbox to show the saved label for the newly selected target
         SyncPingLabelBox();
     }
 
     private void OnSetPingTarget(object sender, RoutedEventArgs e)
     {
-        if (PingTargetCombo.SelectedItem is not string target) return;
-        Vm.ChangePingTarget(target);
-        Vm.StatusText = $"Ping target changed to {target}.";
+        var item = SelectedPingItem;
+        if (item is null) return;
+        Vm.ChangePingTarget(item.Target);
+        // Repopulate so active-target indicator updates
+        PopulatePingTargetCombo();
+        Vm.StatusText = $"Ping target set to {item.Display}.";
     }
 
     private void OnAddPingTarget(object sender, RoutedEventArgs e)
@@ -799,7 +852,6 @@ public partial class MainWindow : Window
             App.Settings.PingTargets.Add(target);
             SettingsManager.Save(App.Settings);
         }
-        // Also switch to the new target immediately
         Vm.ChangePingTarget(target);
         NewPingTargetBox.Text = "";
         PopulatePingTargetCombo();
@@ -808,34 +860,33 @@ public partial class MainWindow : Window
 
     private void OnRemovePingTarget(object sender, RoutedEventArgs e)
     {
-        if (PingTargetCombo.SelectedItem is not string target) return;
-        App.Settings.PingTargets.Remove(target);
-        App.Settings.PingTargetLabels.Remove(target);
-        // If we removed the active target, fall back to the first available
-        if (string.Equals(App.Settings.PingTarget, target, StringComparison.OrdinalIgnoreCase)
+        var item = SelectedPingItem;
+        if (item is null) return;
+        App.Settings.PingTargets.Remove(item.Target);
+        App.Settings.PingTargetLabels.Remove(item.Target);
+        if (string.Equals(App.Settings.PingTarget, item.Target, StringComparison.OrdinalIgnoreCase)
             && App.Settings.PingTargets.Count > 0)
-        {
             Vm.ChangePingTarget(App.Settings.PingTargets[0]);
-        }
         SettingsManager.Save(App.Settings);
         PopulatePingTargetCombo();
-        Vm.StatusText = $"Removed ping target {target}.";
+        Vm.StatusText = $"Removed ping target {item.Target}.";
     }
 
     private void OnSavePingLabel(object sender, RoutedEventArgs e)
     {
-        if (PingTargetCombo.SelectedItem is not string target) return;
+        var item = SelectedPingItem;
+        if (item is null) return;
         var label = PingLabelBox.Text.Trim();
         if (string.IsNullOrEmpty(label))
-            App.Settings.PingTargetLabels.Remove(target);
+            App.Settings.PingTargetLabels.Remove(item.Target);
         else
-            App.Settings.PingTargetLabels[target] = label;
+            App.Settings.PingTargetLabels[item.Target] = label;
         SettingsManager.Save(App.Settings);
-        // Push updated label to sidebar
+        PopulatePingTargetCombo();   // refresh display text
         Vm.NotifyPingDisplayLabel();
         Vm.StatusText = string.IsNullOrEmpty(label)
-            ? $"Label cleared for {target}."
-            : $"Label \"{label}\" saved for {target}.";
+            ? $"Label cleared for {item.Target}."
+            : $"Label \"{label}\" saved for {item.Target}.";
     }
 
     private void OnDualScaleClick(object sender, RoutedEventArgs e)
@@ -957,26 +1008,62 @@ public partial class MainWindow : Window
     private void OnSettingsTabClick(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
-        SettingsTabGeneral.Visibility      = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabNetworkGroup.Visibility = tag == "network" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabTestGroup.Visibility    = tag == "test"    ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabGeneral.Visibility    = tag == "general"    ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabNetwork.Visibility    = tag == "network"    ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabAppearance.Visibility = tag == "appearance" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "network")
+            RefreshConnectionSpeedUI();
+    }
+
+    // ── Connection speed ──────────────────────────────────────────────────────
+
+    private void RefreshConnectionSpeedUI()
+    {
+        bool gbps = App.Settings.ConnectionSpeedUnitGbps;
+        SpeedUnitGbpsRadio.IsChecked = gbps;
+        SpeedUnitMbpsRadio.IsChecked = !gbps;
+        if (gbps)
+        {
+            ConnectionUploadBox.Text   = (App.Settings.ConnectionUploadMbps   / 1000.0).ToString("0.###");
+            ConnectionDownloadBox.Text = (App.Settings.ConnectionDownloadMbps / 1000.0).ToString("0.###");
+            SpeedUnitLabel.Text = "Gbps";
+        }
+        else
         {
             ConnectionUploadBox.Text   = App.Settings.ConnectionUploadMbps.ToString();
             ConnectionDownloadBox.Text = App.Settings.ConnectionDownloadMbps.ToString();
-            ProfilesList.ItemsSource   = App.Settings.LimitProfiles;
+            SpeedUnitLabel.Text = "Mbps";
         }
+        ProfilesList.ItemsSource = App.Settings.LimitProfiles;
     }
 
-    // ── Connection speed save ─────────────────────────────────────────────────
+    private void OnSpeedUnitChanged(object sender, RoutedEventArgs e)
+    {
+        if (SpeedUnitGbpsRadio is null) return;
+        App.Settings.ConnectionSpeedUnitGbps = SpeedUnitGbpsRadio.IsChecked == true;
+        SettingsManager.Save(App.Settings);
+        RefreshConnectionSpeedUI();
+    }
 
     private void OnSaveConnectionSpeed(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(ConnectionUploadBox.Text.Trim(),   out int up)   && up   >= 0)
-            App.Settings.ConnectionUploadMbps   = up;
-        if (int.TryParse(ConnectionDownloadBox.Text.Trim(), out int down) && down >= 0)
-            App.Settings.ConnectionDownloadMbps = down;
+        bool gbps = App.Settings.ConnectionSpeedUnitGbps;
+        if (gbps)
+        {
+            if (double.TryParse(ConnectionUploadBox.Text.Trim(),   out double u) && u >= 0)
+                App.Settings.ConnectionUploadMbps   = (int)(u * 1000);
+            if (double.TryParse(ConnectionDownloadBox.Text.Trim(), out double d) && d >= 0)
+                App.Settings.ConnectionDownloadMbps = (int)(d * 1000);
+        }
+        else
+        {
+            if (int.TryParse(ConnectionUploadBox.Text.Trim(),   out int u) && u >= 0)
+                App.Settings.ConnectionUploadMbps   = u;
+            if (int.TryParse(ConnectionDownloadBox.Text.Trim(), out int d) && d >= 0)
+                App.Settings.ConnectionDownloadMbps = d;
+        }
         SettingsManager.Save(App.Settings);
+        Vm.StatusText = "Connection speed saved.";
     }
 
     // ── Limit profiles ────────────────────────────────────────────────────────
@@ -1080,7 +1167,7 @@ public partial class MainWindow : Window
         translate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
-    /// <summary>Switch to a top-level panel by index (0=Dashboard,1=Network,2=Hardware,3=History,4=Settings,5=OpenRGB).</summary>
+    /// <summary>Switch to a top-level panel by index (0=Dashboard,1=Network,2=Hardware,3=Tools,4=History,5=Settings).</summary>
     private void NavigateToPanel(int idx)
     {
         NavDashboard.IsChecked = idx == 0;
@@ -1102,30 +1189,29 @@ public partial class MainWindow : Window
                 if (panels[i].Visibility == Visibility.Visible) FadeOut(panels[i]);
             }
         }
+
+        // Refresh history data whenever the user navigates to that tab.
+        if (idx == 4) HistoryPanel.Reload();
     }
 
-    /// <summary>Switch to a Settings sub-tab by tag name, mapping old fine-grained tags to the new 3-tab structure.</summary>
+    /// <summary>Switch to a Settings sub-tab by tag name.</summary>
     private void NavigateToSettingsTab(string tabTag)
     {
         string parent = tabTag switch
         {
-            "appearance" or "shortcuts" or "system"               => "general",
-            "monitoring" or "connection" or "profiles" or "network" => "network",
-            "ping"       or "speedtest"                           => "test",
-            _                                                     => tabTag
+            "shortcuts" or "system" or "behavior" or "units" => "general",
+            "connection" or "profiles" or "ping"
+                or "speedtest" or "test" or "network"        => "network",
+            "appearance" or "colors"                         => "appearance",
+            _                                                => tabTag
         };
-        SettingsTabBtnGeneral.IsChecked     = parent == "general";
-        SettingsTabBtnNetwork.IsChecked     = parent == "network";
-        SettingsTabBtnTest.IsChecked        = parent == "test";
-        SettingsTabGeneral.Visibility      = parent == "general" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabNetworkGroup.Visibility = parent == "network" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabTestGroup.Visibility    = parent == "test"    ? Visibility.Visible : Visibility.Collapsed;
-        if (parent == "network")
-        {
-            ConnectionUploadBox.Text   = App.Settings.ConnectionUploadMbps.ToString();
-            ConnectionDownloadBox.Text = App.Settings.ConnectionDownloadMbps.ToString();
-            ProfilesList.ItemsSource   = App.Settings.LimitProfiles;
-        }
+        SettingsTabBtnGeneral.IsChecked    = parent == "general";
+        SettingsTabBtnNetwork.IsChecked    = parent == "network";
+        SettingsTabBtnAppearance.IsChecked = parent == "appearance";
+        SettingsTabGeneral.Visibility    = parent == "general"    ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabNetwork.Visibility    = parent == "network"    ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabAppearance.Visibility = parent == "appearance" ? Visibility.Visible : Visibility.Collapsed;
+        if (parent == "network") RefreshConnectionSpeedUI();
     }
 
     // ── Dashboard card click handlers ────────────────────────────────────────
@@ -1134,7 +1220,7 @@ public partial class MainWindow : Window
     private void OnDashHardwareClick(object sender, MouseButtonEventArgs e)  => NavigateToPanel(2);
     private void OnDashPingClick(object sender, MouseButtonEventArgs e)
     {
-        NavigateToPanel(4);
+        NavigateToPanel(5);
         NavigateToSettingsTab("ping");
     }
 
@@ -1142,7 +1228,7 @@ public partial class MainWindow : Window
 
     private void OnSidebarPingClick(object sender, MouseButtonEventArgs e)
     {
-        NavigateToPanel(4);
+        NavigateToPanel(5);
         NavigateToSettingsTab("ping");
     }
 
@@ -1473,14 +1559,13 @@ public partial class MainWindow : Window
         canvas.Children.Add(dot);
 
         // ── Y-axis labels (max at top-left, min at bottom-left) ─────────────
-        var axisColor = Color.FromArgb(110, 200, 210, 220);
         string maxLabel = $"{dataMax:0}{unit}";
         string minLabel = $"{dataMin:0}{unit}";
 
         var maxTb = new TextBlock
         {
             Text = maxLabel, FontSize = 8,
-            Foreground = new SolidColorBrush(axisColor),
+            Foreground = _chartLabelBrush,
             IsHitTestVisible = false
         };
         Canvas.SetLeft(maxTb, 2); Canvas.SetTop(maxTb, 1);
@@ -1489,7 +1574,7 @@ public partial class MainWindow : Window
         var minTb = new TextBlock
         {
             Text = minLabel, FontSize = 8,
-            Foreground = new SolidColorBrush(axisColor),
+            Foreground = _chartLabelBrush,
             IsHitTestVisible = false
         };
         Canvas.SetLeft(minTb, 2); Canvas.SetTop(minTb, h - 11);
@@ -1536,7 +1621,7 @@ public partial class MainWindow : Window
             X1 = lineX, Y1 = 0, X2 = lineX, Y2 = h,
             Stroke = new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)),
             StrokeThickness = 1, IsHitTestVisible = false,
-            StrokeDashArray = new DoubleCollection { 2, 2 }
+            StrokeDashArray = _dashTwo
         });
 
         // Value bubble
@@ -1595,6 +1680,71 @@ public partial class MainWindow : Window
         App.Settings.AppSortMemberPath = e.Column.SortMemberPath ?? "";
         App.Settings.AppSortDescending = dir == ListSortDirection.Descending;
         SettingsManager.Save(App.Settings);
+    }
+
+    // ── Column width + visibility persistence ─────────────────────────────────
+
+    private void SaveAppGridColumns()
+    {
+        var widths  = App.Settings.AppGridColumnWidths;
+        var hidden  = App.Settings.AppGridHiddenColumns;
+        widths.Clear();
+        hidden.Clear();
+        foreach (var col in AppGrid.Columns)
+        {
+            var key = col.Header as string;
+            if (string.IsNullOrEmpty(key)) continue;
+            if (col.ActualWidth > 0) widths[key] = col.ActualWidth;
+            if (col.Visibility == Visibility.Collapsed) hidden.Add(key);
+        }
+        SettingsManager.Save(App.Settings);
+    }
+
+    private void RestoreAppGridColumns()
+    {
+        var widths = App.Settings.AppGridColumnWidths;
+        var hidden = App.Settings.AppGridHiddenColumns;
+        foreach (var col in AppGrid.Columns)
+        {
+            var key = col.Header as string;
+            if (string.IsNullOrEmpty(key)) continue;
+            if (widths.TryGetValue(key, out double w) && w > 0)
+                col.Width = new DataGridLength(w);
+            col.Visibility = hidden.Contains(key) ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    // ── Right-click column header → show/hide columns ────────────────────────
+
+    private void OnAppGridHeaderRightClick(object sender, MouseButtonEventArgs e)
+    {
+        var header = FindVisualAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject);
+        if (header?.Column == null) return;
+
+        e.Handled = true;
+
+        var menu = new ContextMenu();
+        foreach (var col in AppGrid.Columns)
+        {
+            var label = col.Header as string;
+            if (string.IsNullOrEmpty(label)) continue;
+            var captured = col;
+            var item = new MenuItem
+            {
+                Header      = label,
+                IsCheckable = true,
+                IsChecked   = col.Visibility == Visibility.Visible,
+            };
+            item.Click += (_, _) =>
+            {
+                captured.Visibility = item.IsChecked ? Visibility.Visible : Visibility.Collapsed;
+                SaveAppGridColumns();
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.PlacementTarget = (UIElement)sender;
+        menu.IsOpen = true;
     }
 
     private void RestoreAppGridSort()
@@ -1760,6 +1910,26 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    // ────────── Behaviour toggles ──────────
+
+    private void InitBehaviourToggles()
+    {
+        MinimizeOnCloseToggle.IsChecked  = App.Settings.MinimizeOnClose;
+        StartMinimizedToggle.IsChecked   = App.Settings.StartMinimizedToTray;
+    }
+
+    private void OnMinimizeOnCloseToggleClick(object sender, RoutedEventArgs e)
+    {
+        App.Settings.MinimizeOnClose = MinimizeOnCloseToggle.IsChecked == true;
+        SettingsManager.Save(App.Settings);
+    }
+
+    private void OnStartMinimizedToggleClick(object sender, RoutedEventArgs e)
+    {
+        App.Settings.StartMinimizedToTray = StartMinimizedToggle.IsChecked == true;
+        SettingsManager.Save(App.Settings);
+    }
+
     // ────────── Auto-start ──────────
 
     private void InitAutoStartToggle()
@@ -1794,6 +1964,104 @@ public partial class MainWindow : Window
             AutoStartStatusLabel.Text = "Failed — run Bansa as administrator to change this setting";
             Vm.StatusText = "Auto-start change failed. Try running Bansa as administrator.";
         }
+    }
+
+    // ────────── Settings export / import ──────────
+
+    private void OnExportSettings(object sender, RoutedEventArgs e)
+    {
+        using var dlg = new System.Windows.Forms.SaveFileDialog
+        {
+            Title    = "Export Bansa settings",
+            Filter   = "JSON files (*.json)|*.json",
+            FileName = $"bansa-settings-{DateTime.Now:yyyy-MM-dd}.json",
+        };
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                App.Settings,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(dlg.FileName, json);
+            Vm.StatusText = $"Settings exported to {System.IO.Path.GetFileName(dlg.FileName)}.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Export failed: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OnImportSettings(object sender, RoutedEventArgs e)
+    {
+        using var dlg = new System.Windows.Forms.OpenFileDialog
+        {
+            Title  = "Import Bansa settings",
+            Filter = "JSON files (*.json)|*.json",
+        };
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        BansaSettings imported;
+        try
+        {
+            var json = System.IO.File.ReadAllText(dlg.FileName);
+            imported = System.Text.Json.JsonSerializer.Deserialize<BansaSettings>(json)
+                       ?? throw new InvalidOperationException("Empty or null settings file.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Could not read settings file: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            "This will replace all current settings — limits, profiles, colors, and preferences.\n\nContinue?",
+            "Import settings", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes) return;
+
+        App.Settings = imported;
+        SettingsManager.Save(App.Settings);
+        ApplyImportedSettings();
+        Vm.StatusText = "Settings imported successfully.";
+    }
+
+    private void ApplyImportedSettings()
+    {
+        // Units
+        bool useBits = App.Settings.RateUnit.Equals("Bits", StringComparison.OrdinalIgnoreCase);
+        Vm.UseBitsUnit      = useBits;
+        UnitBitsRadio.IsChecked  = useBits;
+        UnitBytesRadio.IsChecked = !useBits;
+
+        // Theme
+        bool dark = App.Settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        if (Vm.IsDarkTheme != dark) Vm.IsDarkTheme = dark;
+
+        // Windows accent
+        if (App.Settings.UseWindowsAccent) ApplyOsAccentToResources();
+
+        // Colors
+        Vm.SetDownColor(App.Settings.DownColorHex);
+        Vm.SetUpColor(App.Settings.UpColorHex);
+        PopulateSwatches(DownGraphSwatches, App.Settings.DownColorHex, hex => Vm.SetDownColor(hex));
+        PopulateSwatches(UpGraphSwatches,   App.Settings.UpColorHex,   hex => Vm.SetUpColor(hex));
+        PopulateSwatches(TrayDownSwatches,  App.Settings.TrayDownColorHex, hex => Vm.SetTrayDownColor(hex));
+        PopulateSwatches(TrayUpSwatches,    App.Settings.TrayUpColorHex,   hex => Vm.SetTrayUpColor(hex));
+
+        // Behavior toggles
+        InitBehaviourToggles();
+
+        // Dual-scale chart toggle
+        _dualScale = App.Settings.DualScale;
+        DualScaleBtn.IsChecked = _dualScale;
+
+        // Ping targets
+        PopulatePingTargetCombo();
+
+        // Connection speed (refreshed next time user opens Network tab)
+        // Columns + sort
+        RestoreAppGridSort();
+        RestoreAppGridColumns();
     }
 
     // ────────── Column auto-size on separator double-click (Excel / Sheets style) ──────────

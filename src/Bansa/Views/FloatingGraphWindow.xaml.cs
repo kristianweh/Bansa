@@ -89,8 +89,7 @@ public partial class FloatingGraphWindow : Window
             Top  = wa.Top   + 16;
         }
 
-        Topmost          = s.FloatGraphTopmost;
-        PinBtn.IsChecked = Topmost;
+        Topmost = s.FloatGraphTopmost;
 
         // Apply initial section layout (Graph + Apps always visible; HW based on settings)
         InitSections(s.ShowHardwarePanel);
@@ -646,14 +645,12 @@ public partial class FloatingGraphWindow : Window
         // ShowFloatingGraph / ShowHardwarePanel persistence is managed by MainWindow.
     }
 
-    // ── Header button handlers ─────────────────────────────────────────────────
+    // ── Drag (rates bar acts as the drag handle) ──────────────────────────────
 
-    private void OnPinChanged(object sender, RoutedEventArgs e)
+    private void OnRatesBarDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        bool pinned = PinBtn.IsChecked == true;
-        Topmost = pinned;
-        if (App.Settings is not null)
-            App.Settings.FloatGraphTopmost = pinned;
+        if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+            DragMove();
     }
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
@@ -672,13 +669,6 @@ public partial class FloatingGraphWindow : Window
 
     private void OnOpenBansaMenuClick(object sender, RoutedEventArgs e) => BringBansaToFront();
 
-    /// <summary>Double-clicking the title bar opens (or restores) the main Bansa window.</summary>
-    private void OnHeaderMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (e.ClickCount < 2 || e.ChangedButton != System.Windows.Input.MouseButton.Left) return;
-        e.Handled = true;
-        BringBansaToFront();
-    }
 
     // ── Window right-click context menu ───────────────────────────────────────
 
@@ -692,7 +682,6 @@ public partial class FloatingGraphWindow : Window
     private void OnAlwaysOnTopMenuClick(object sender, RoutedEventArgs e)
     {
         bool pinned = AlwaysOnTopMenu.IsChecked;
-        PinBtn.IsChecked = pinned;
         Topmost = pinned;
         if (App.Settings is not null)
             App.Settings.FloatGraphTopmost = pinned;

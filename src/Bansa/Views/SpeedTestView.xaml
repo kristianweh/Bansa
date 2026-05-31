@@ -1,8 +1,7 @@
 ﻿<UserControl x:Class="Bansa.Views.SpeedTestView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Margin="0,16,0,0" MaxWidth="900" HorizontalAlignment="Left">
+    <Grid Margin="0,16,0,0" MaxWidth="900" HorizontalAlignment="Left">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -89,6 +88,5 @@
                     </TextBlock>
                 </StackPanel>
             </Border>
-        </Grid>
-    </ScrollViewer>
+    </Grid>
 </UserControl>

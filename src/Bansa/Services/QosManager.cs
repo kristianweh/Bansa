@@ -149,8 +149,10 @@ public static class QosManager
                 using var baseKey = Registry.LocalMachine.OpenSubKey(QosRegBase, writable: true);
                 if (baseKey == null) return true; // nothing to clean up
 
+                // Broad match: any QoS policy whose name contains "Bansa",
+                // regardless of what prefix an older version used.
                 var toDelete = baseKey.GetSubKeyNames()
-                    .Where(n => n.StartsWith(PolicyPrefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(n => n.Contains("Bansa", StringComparison.OrdinalIgnoreCase))
                     .ToArray();
                 foreach (var name in toDelete)
                     try { baseKey.DeleteSubKey(name, throwOnMissingSubKey: false); } catch { }
@@ -262,10 +264,13 @@ public static class QosManager
     private static string MakePolicyName(string exePath, string suffix)
     {
         var fileName = Path.GetFileNameWithoutExtension(exePath);
-        var safe = new string(fileName
-            .Where(c => char.IsLetterOrDigit(c) || c == '_' || c == '-').ToArray());
-        if (string.IsNullOrEmpty(safe)) safe = "app";
-        if (safe.Length > 20) safe = safe[..20];
-        return $"{PolicyPrefix}{safe}-{suffix}";
+        var sb = new System.Text.StringBuilder(Math.Min(fileName.Length, 20));
+        foreach (char c in fileName)
+        {
+            if (sb.Length == 20) break;
+            if (char.IsLetterOrDigit(c) || c == '_' || c == '-')
+                sb.Append(c);
+        }
+        return $"{PolicyPrefix}{(sb.Length > 0 ? sb.ToString() : "app")}-{suffix}";
     }
 }

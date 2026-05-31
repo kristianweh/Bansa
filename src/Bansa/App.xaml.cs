@@ -10,21 +10,28 @@ namespace Bansa;
 public partial class App : Application
 {
     /// <summary>
-    /// Bansa is always self-contained: everything lives in a "Data" subfolder
-    /// next to Bansa.exe so the whole folder can be moved or deleted cleanly.
+    /// User data (settings, history DB, crash log) lives in %LocalAppData%\Bansa\.
+    /// Tool executables placed by the user live next to Bansa.exe in Data\Tools\.
     /// </summary>
-    public static string DataFolder { get; private set; } =
-        Path.Combine(AppContext.BaseDirectory, "Data");
+    public static string DataFolder  { get; private set; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bansa");
 
-    public static BansaSettings Settings { get; private set; } = new();
+    public static string ToolsFolder { get; private set; } =
+        Path.Combine(AppContext.BaseDirectory, "Data", "Tools");
+
+    public static BansaSettings Settings { get; internal set; } = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        var exeDir = AppContext.BaseDirectory;
-        DataFolder = Path.Combine(exeDir, "Data");
+        DataFolder  = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bansa");
+        ToolsFolder = Path.Combine(AppContext.BaseDirectory, "Data", "Tools");
 
         Directory.CreateDirectory(DataFolder);
-        Directory.CreateDirectory(Path.Combine(DataFolder, "Tools"));
+        Directory.CreateDirectory(ToolsFolder);
+
+        // One-time migration from the old exe-adjacent Data\ folder
+        MigrateOldDataFolder();
 
         Settings = SettingsManager.Load();
 
@@ -67,6 +74,22 @@ public partial class App : Application
                     $"[{DateTime.Now:O}] {ex}\n");
             }
             catch { /* best effort */ }
+        }
+    }
+
+    private static void MigrateOldDataFolder()
+    {
+        var oldDir = Path.Combine(AppContext.BaseDirectory, "Data");
+        var newDir = DataFolder;
+        if (!Directory.Exists(oldDir) || Directory.Exists(Path.Combine(newDir, "bansa.db")))
+            return;
+
+        foreach (var file in new[] { "settings.json", "bansa.db", "crash.log" })
+        {
+            var src = Path.Combine(oldDir, file);
+            var dst = Path.Combine(newDir, file);
+            if (File.Exists(src) && !File.Exists(dst))
+                try { File.Copy(src, dst); } catch { }
         }
     }
 }

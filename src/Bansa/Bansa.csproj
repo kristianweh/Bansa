@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Bansa</AssemblyName>
     <RootNamespace>Bansa</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.5.0</Version>
     <ApplicationIcon>Resources\Bansa.ico</ApplicationIcon>
     <Company>Personal</Company>
     <Product>Bansa</Product>
@@ -18,13 +18,10 @@
   </PropertyGroup>
 
   <!--
-    ══ Portable single-file publish ══════════════════════════════════════════════
-    Run:  dotnet publish -c Release -r win-x64 -p:PublishProfile=Portable
-    Output: bin\publish\portable\Bansa.exe  (~55 MB self-contained, no .NET needed)
-
-    To activate portable mode on the target PC, drop a file named "portable"
-    in the same folder as Bansa.exe.  Settings and history will be stored in
-    .\Data\ next to the exe instead of %LocalAppData%\Flow\.
+    ══ Publish ════════════════════════════════════════════════════════════════════
+    Run pack-release.ps1 to produce release\Bansa.zip.
+    User data lives in %LocalAppData%\Bansa\; tool executables live in Data\Tools\
+    next to Bansa.exe.
     ══════════════════════════════════════════════════════════════════════════════
   -->
 
@@ -32,9 +29,9 @@
     <Resource Include="Resources\Bansa.ico" />
     <Resource Include="Resources\bansa-light.png" />
     <Resource Include="Resources\bansa-dark.png" />
-    <!-- Roboto + Roboto Mono — bundled as WPF resources so they render identically
-         on any Windows install regardless of whether the user has Google fonts.
-         Reference in XAML: pack://application:,,,/Fonts/#Roboto  (or #Roboto Mono) -->
+    <!-- Inter — bundled as WPF resources so they render identically
+         on any Windows install regardless of whether the user has the font installed.
+         Reference in XAML: pack://application:,,,/Fonts/#Inter -->
     <Resource Include="Fonts\Inter-Regular.ttf" />
     <Resource Include="Fonts\Inter-Medium.ttf" />
     <Resource Include="Fonts\Inter-SemiBold.ttf" />

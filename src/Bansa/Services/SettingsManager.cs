@@ -18,12 +18,13 @@ public class BansaSettings
 {
     public string Theme { get; set; } = "Dark";          // "Dark" or "Light"
     public double HideBelowKBps { get; set; } = 0;
-    public bool HideIdleApps { get; set; } = false;
     public bool HideLocalOnlyApps { get; set; } = false;  // hide apps whose all connections are loopback/LAN
+    public bool MinimizeOnClose      { get; set; } = false;
     public bool StartMinimizedToTray { get; set; } = false;
-    public bool ShowTrayIcon { get; set; } = true;
+    public bool ShowTrayIcon         { get; set; } = true;
     public string PingTarget { get; set; } = "8.8.8.8";
-    public List<string> PingTargets { get; set; } = new() { "8.8.8.8", "1.1.1.1", "8.8.4.4" };
+    public List<string> PingTargets { get; set; } = new()
+        { "8.8.8.8", "1.1.1.1", "9.9.9.9", "8.8.4.4", "208.67.222.222" };
     public string RateUnit { get; set; } = "Bytes";      // "Bytes" or "Bits"
     public int TrayIconSize { get; set; } = 96;          // px; rendered at this resolution and Windows downscales
     public bool UseWindowsAccent { get; set; } = true;   // chart + accent follow OS accent
@@ -40,7 +41,14 @@ public class BansaSettings
 
     // ── Ping target labels ───────────────────────────────────────────────────
     // Optional display name for each ping target.  Key = IP/hostname (case-insensitive).
-    public Dictionary<string, string> PingTargetLabels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> PingTargetLabels { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["8.8.8.8"]          = "Google DNS",
+        ["1.1.1.1"]          = "Cloudflare",
+        ["9.9.9.9"]          = "Quad9",
+        ["8.8.4.4"]          = "Google DNS 2",
+        ["208.67.222.222"]   = "OpenDNS",
+    };
 
     // ── Per-app limit persistence ─────────────────────────────────────────────
     // Keyed by image path (lowercased). Restored on startup when the app is detected.
@@ -66,13 +74,18 @@ public class BansaSettings
     public int ConnectionUploadMbps   { get; set; } = 0;
     /// <summary>User's ISP download speed in Mbps. 0 = not configured.</summary>
     public int ConnectionDownloadMbps { get; set; } = 0;
+    /// <summary>When true, the Settings Network tab shows connection speed in Gbps.</summary>
+    public bool ConnectionSpeedUnitGbps { get; set; } = false;
 
     // ── Named limit profiles ──────────────────────────────────────────────────
     public List<LimitProfile> LimitProfiles { get; set; } = new();
 
-    // ── App grid sort persistence ─────────────────────────────────────────────
+    // ── App grid sort + column persistence ───────────────────────────────────
     public string AppSortMemberPath  { get; set; } = "BytesInPerSec";
     public bool   AppSortDescending  { get; set; } = true;
+    // Column widths keyed by header text; hidden column headers stored in the set.
+    public Dictionary<string, double> AppGridColumnWidths  { get; set; } = new();
+    public HashSet<string>            AppGridHiddenColumns { get; set; } = new(StringComparer.Ordinal);
 
     // ── Floating graph window ─────────────────────────────────────────────────
     public bool   ShowFloatingGraph  { get; set; } = false;
@@ -99,18 +112,42 @@ public static class SettingsManager
 
     public static event Action? Changed;
 
+    private static readonly (string Ip, string Label)[] _defaultTargets =
+    {
+        ("8.8.8.8",        "Google DNS"),
+        ("1.1.1.1",        "Cloudflare"),
+        ("9.9.9.9",        "Quad9"),
+        ("8.8.4.4",        "Google DNS 2"),
+        ("208.67.222.222", "OpenDNS"),
+    };
+
     public static BansaSettings Load()
     {
+        BansaSettings s;
         try
         {
             if (File.Exists(SettingsPath))
             {
                 var json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<BansaSettings>(json) ?? new BansaSettings();
+                s = JsonSerializer.Deserialize<BansaSettings>(json) ?? new BansaSettings();
+            }
+            else
+            {
+                s = new BansaSettings();
             }
         }
-        catch { /* fall through to defaults */ }
-        return new BansaSettings();
+        catch { s = new BansaSettings(); }
+
+        // Merge default ping targets / labels for users upgrading from older versions.
+        foreach (var (ip, label) in _defaultTargets)
+        {
+            if (!s.PingTargets.Contains(ip, StringComparer.OrdinalIgnoreCase))
+                s.PingTargets.Add(ip);
+            if (!s.PingTargetLabels.ContainsKey(ip))
+                s.PingTargetLabels[ip] = label;
+        }
+
+        return s;
     }
 
     public static void Save(BansaSettings settings)

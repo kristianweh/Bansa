@@ -39,7 +39,7 @@ public partial class HistoryView : UserControl
     public HistoryView()
     {
         InitializeComponent();
-        FromPicker.SelectedDate = DateTime.Today.AddDays(-7);
+        FromPicker.SelectedDate = DateTime.Today;
         ToPicker.SelectedDate = DateTime.Today;
         Loaded += (_, _) => Reload();
         Unloaded += (_, _) => _history.Dispose();
@@ -95,7 +95,7 @@ public partial class HistoryView : UserControl
         }
     }
 
-    private void Reload()
+    public void Reload()
     {
         var from = (FromPicker.SelectedDate ?? DateTime.Today).Date;
         var to   = (ToPicker.SelectedDate ?? DateTime.Today).Date.AddDays(1).AddSeconds(-1);

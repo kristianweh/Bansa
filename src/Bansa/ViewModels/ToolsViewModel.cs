@@ -19,7 +19,7 @@ public sealed class ToolsViewModel
 
     public ToolsViewModel()
     {
-        var toolsDir = Path.Combine(App.DataFolder, "Tools");
+        var toolsDir = App.ToolsFolder;
 
         // ── OpenRGB ───────────────────────────────────────────────────────
         Tools.Add(new ToolItem(
@@ -94,11 +94,19 @@ public sealed partial class ToolItem : ObservableObject
 
     // ── Derived ───────────────────────────────────────────────────────────
 
-    /// Scans all of Data\Tools\ for the exe — works regardless of subfolder structure.
-    private string? FindExe() =>
-        _toolsDir is null || _exeName is null || !Directory.Exists(_toolsDir) ? null
-        : Directory.EnumerateFiles(_toolsDir, _exeName, SearchOption.AllDirectories)
-                   .FirstOrDefault();
+    // Cached result of the last directory scan. null = not found; "" = cache invalid.
+    private string? _cachedExe = "";
+
+    private string? FindExe()
+    {
+        if (_cachedExe != "")
+            return _cachedExe;   // null is a valid cached result (not found)
+        _cachedExe = _toolsDir is null || _exeName is null || !Directory.Exists(_toolsDir)
+            ? null
+            : Directory.EnumerateFiles(_toolsDir, _exeName, SearchOption.AllDirectories)
+                       .FirstOrDefault();
+        return _cachedExe;
+    }
 
     public bool IsInstalled => FindExe() is not null;
 
@@ -124,6 +132,7 @@ public sealed partial class ToolItem : ObservableObject
 
     private void RefreshState()
     {
+        _cachedExe = "";   // invalidate so the next read does a fresh scan
         OnPropertyChanged(nameof(IsInstalled));
         OnPropertyChanged(nameof(SubLabel));
     }
@@ -165,12 +174,7 @@ public sealed partial class ToolItem : ObservableObject
         var exe = FindExe();
         if (exe is null)
         {
-            try
-            {
-                var rel = Path.GetRelativePath(AppContext.BaseDirectory, _toolsDir!);
-                StatusText = $"Not found in {rel}";
-            }
-            catch { StatusText = "Not found — download from the website."; }
+            StatusText = $"Not found in Data\\Tools\\ — download from the website.";
             return;
         }
         try

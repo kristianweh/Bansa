@@ -86,13 +86,13 @@ public static class FirewallManager
             try
             {
                 dynamic rules = GetFwRules();
-                // Enumerate all rules, collect names with our prefix, then remove.
-                // Two-pass avoids modifying the collection while iterating.
+                // Two-pass: collect first, then remove (can't modify while iterating COM collection).
+                // Match ANY rule whose name contains "Bansa" — catches old prefix schemes too.
                 var toRemove = new List<string>();
                 foreach (dynamic rule in (System.Collections.IEnumerable)rules)
                 {
                     var name = (string)rule.Name;
-                    if (name.StartsWith(RulePrefix, StringComparison.OrdinalIgnoreCase))
+                    if (name.Contains("Bansa", StringComparison.OrdinalIgnoreCase))
                         toRemove.Add(name);
                 }
                 foreach (var n in toRemove) TryRemoveRule(rules, n);
@@ -135,9 +135,11 @@ public static class FirewallManager
 
     private static string MakeRuleName(string exePath)
     {
-        var fn   = Path.GetFileNameWithoutExtension(exePath);
-        var safe = new string(fn.Where(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.').ToArray());
-        if (string.IsNullOrEmpty(safe)) safe = "app";
-        return RulePrefix + safe;
+        var fn = Path.GetFileNameWithoutExtension(exePath);
+        var sb = new System.Text.StringBuilder(fn.Length);
+        foreach (char c in fn)
+            if (char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.')
+                sb.Append(c);
+        return RulePrefix + (sb.Length > 0 ? sb.ToString() : "app");
     }
 }

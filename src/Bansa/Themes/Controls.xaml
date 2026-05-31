@@ -555,12 +555,95 @@
     </Style>
 
     <Style TargetType="ComboBox">
-        <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="10,6" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Background"       Value="{DynamicResource PanelAltBrush}" />
+        <Setter Property="Foreground"       Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderBrush"      Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness"  Value="1" />
+        <Setter Property="Padding"          Value="10,6" />
+        <Setter Property="FontSize"         Value="13" />
+        <Setter Property="MaxDropDownHeight" Value="240" />
+        <Setter Property="Cursor"           Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <!-- Outer border (background + ring) -->
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" />
+                        <!-- Full-area toggle button opens the dropdown -->
+                        <ToggleButton x:Name="toggleButton"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                  RelativeSource={RelativeSource TemplatedParent}}"
+                                      Background="Transparent" BorderThickness="0"
+                                      Cursor="Hand" ClickMode="Press">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="28" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- Transparent hit-area over content column -->
+                                        <Rectangle Grid.ColumnSpan="2" Fill="Transparent" />
+                                        <!-- Chevron -->
+                                        <Path Grid.Column="1"
+                                              Data="M 0 0 L 5 5 L 10 0"
+                                              Stroke="{DynamicResource SubtleTextBrush}"
+                                              StrokeThickness="1.5" StrokeLineJoin="Round"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              IsHitTestVisible="False" />
+                                    </Grid>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <!-- Selected-item display -->
+                        <ContentPresenter x:Name="contentPresenter"
+                                          ContentSource="SelectedItem"
+                                          Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Left" VerticalAlignment="Center"
+                                          IsHitTestVisible="False"
+                                          TextBlock.Foreground="{TemplateBinding Foreground}" />
+                        <!-- Dropdown popup -->
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True"
+                               IsOpen="{Binding IsDropDownOpen,
+                                        RelativeSource={RelativeSource TemplatedParent}}"
+                               Placement="Bottom"
+                               PlacementTarget="{Binding ElementName=border}"
+                               VerticalOffset="4"
+                               PopupAnimation="Slide">
+                            <Border Background="{DynamicResource PanelBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="4"
+                                    MinWidth="{Binding ActualWidth, ElementName=border}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="14" ShadowDepth="4"
+                                                      Opacity="0.4" Color="Black" Direction="270" />
+                                </Border.Effect>
+                                <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter SnapsToDevicePixels="True" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="border" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="border" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="border" Property="BorderThickness" Value="1.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style TargetType="CheckBox">
@@ -864,12 +947,20 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <!-- Icon / checkmark placeholder -->
-                            <ContentPresenter Grid.Column="0"
-                                              ContentSource="Icon"
-                                              Width="20" Margin="0,0,4,0"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" />
+                            <!-- Icon or checkmark -->
+                            <Grid Grid.Column="0" Width="20" Margin="0,0,4,0">
+                                <ContentPresenter x:Name="IconPresenter"
+                                                  ContentSource="Icon"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                                <TextBlock x:Name="CheckGlyph"
+                                           Text="✓"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           FontSize="13"
+                                           Visibility="Collapsed" />
+                            </Grid>
                             <!-- Header text -->
                             <ContentPresenter Grid.Column="1"
                                               ContentSource="Header"
@@ -887,9 +978,13 @@
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentBrush}" />
                             <Setter Property="Foreground" Value="White" />
+                            <Setter TargetName="CheckGlyph" Property="Foreground" Value="White" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -346,8 +346,11 @@ public sealed class DownloadThrottler : IDisposable
                 foreach (dynamic rule in (System.Collections.IEnumerable)rules)
                 {
                     var n = (string)rule.Name;
-                    if (n.StartsWith(ThrottleRulePrefix,   StringComparison.OrdinalIgnoreCase) ||
-                        n.StartsWith(UpThrottleRulePrefix, StringComparison.OrdinalIgnoreCase))
+                    // Broad match: any throttle/block rule that contains "Bansa",
+                    // including rules created by older versions with different prefixes.
+                    if (n.Contains("Bansa", StringComparison.OrdinalIgnoreCase) &&
+                        (n.Contains("Throttle", StringComparison.OrdinalIgnoreCase) ||
+                         n.Contains("Block",    StringComparison.OrdinalIgnoreCase)))
                         toRemove.Add(n);
                 }
                 foreach (var n in toRemove) TryRemoveFwRule(rules, n);
@@ -412,10 +415,11 @@ public sealed class DownloadThrottler : IDisposable
     private static string MakeRuleName(string prefix, string exePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(exePath);
-        var safe = new string(fileName
-            .Where(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.').ToArray());
-        if (string.IsNullOrEmpty(safe)) safe = "app";
-        return prefix + safe;
+        var sb = new System.Text.StringBuilder(fileName.Length);
+        foreach (char c in fileName)
+            if (char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.')
+                sb.Append(c);
+        return prefix + (sb.Length > 0 ? sb.ToString() : "app");
     }
 
     private static dynamic GetFwRules()

@@ -13,7 +13,7 @@
         Width="340" Height="500">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="30"
+        <shell:WindowChrome CaptionHeight="0"
                             ResizeBorderThickness="6"
                             GlassFrameThickness="0"
                             CornerRadius="0"
@@ -148,10 +148,11 @@
                 <MenuItem x:Name="ShowSystemMenu" Header="Show system info"
                           IsCheckable="True" IsChecked="True"
                           Click="OnShowSystemMenuClick" />
+                <Separator />
+                <MenuItem Header="Close" Click="OnCloseClick" />
             </ContextMenu>
         </Grid.ContextMenu>
         <Grid.RowDefinitions>
-            <RowDefinition Height="30" />
             <RowDefinition x:Name="GraphRow" Height="3*" MinHeight="80" />
             <RowDefinition x:Name="S1Row"    Height="8" />
             <RowDefinition x:Name="AppsRow"  Height="2*" MinHeight="0" />
@@ -159,42 +160,8 @@
             <RowDefinition x:Name="HwRow"    Height="0" MinHeight="0" />
         </Grid.RowDefinitions>
 
-        <!-- ═══ HEADER — compact 30 px bar ═══ -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,0,0,1"
-                MouseDown="OnHeaderMouseDown">
-            <Grid Margin="8,0,4,0">
-                <!-- Brand -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <Border Width="3" CornerRadius="2" Margin="0,6,7,6"
-                            Background="{DynamicResource AccentGradientVerticalBrush}" />
-                    <TextBlock Text="BANSA" VerticalAlignment="Center"
-                               FontFamily="{StaticResource RobotoMonoFamily}" FontSize="13" FontWeight="Bold"
-                               Foreground="{DynamicResource TextBrush}" />
-                </StackPanel>
-
-                <!-- Window controls -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <ToggleButton x:Name="PinBtn" Style="{StaticResource MiniToggleBtn}"
-                                  Width="26" Height="26" Margin="0,0,2,0"
-                                  IsChecked="True" ToolTip="Always on top"
-                                  Checked="OnPinChanged" Unchecked="OnPinChanged">
-                        <TextBlock Text="&#xE718;" />
-                    </ToggleButton>
-                    <Button Style="{StaticResource MiniBtn}" Width="26" Height="26"
-                            ToolTip="Close" Click="OnCloseClick">
-                        <TextBlock Text="&#xE8BB;" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
         <!-- ═══ GRAPH + RATES + PING ═══ -->
-        <Grid Grid.Row="1" x:Name="GraphSection">
+        <Grid Grid.Row="0" x:Name="GraphSection">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />    <!-- rates strip — auto so Roboto Mono never clips -->
@@ -223,11 +190,12 @@
                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
                        Margin="0,0,9,3" IsHitTestVisible="False" />
 
-            <!-- Rates strip — Padding="10,9": CornerRadius=10 clips the last 10px at corners,
-                 so 9px vertical padding keeps text clear of the clip boundary -->
+            <!-- Rates strip — drag to move the window; Padding keeps text clear of rounded corners -->
             <Border Grid.Row="1"
                     Background="{DynamicResource PanelAltBrush}"
-                    CornerRadius="10" Margin="6,4,6,2" Padding="10,9">
+                    CornerRadius="10" Margin="6,4,6,2" Padding="10,9"
+                    MouseLeftButtonDown="OnRatesBarDrag"
+                    Cursor="SizeAll">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -316,10 +284,10 @@
             </Border>
         </Grid>
 
-        <GridSplitter Grid.Row="2" x:Name="Splitter1" Style="{StaticResource SectionGrip}" />
+        <GridSplitter Grid.Row="1" x:Name="Splitter1" Style="{StaticResource SectionGrip}" />
 
         <!-- ═══ APPS SECTION ═══ -->
-        <Border Grid.Row="3" x:Name="AppsSection" Background="{DynamicResource BgBrush}">
+        <Border Grid.Row="2" x:Name="AppsSection" Background="{DynamicResource BgBrush}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -385,10 +353,10 @@
             </Grid>
         </Border>
 
-        <GridSplitter Grid.Row="4" x:Name="Splitter2" Style="{StaticResource SectionGrip}" />
+        <GridSplitter Grid.Row="3" x:Name="Splitter2" Style="{StaticResource SectionGrip}" />
 
         <!-- ═══ HARDWARE SECTION ═══ -->
-        <Border Grid.Row="5" x:Name="HwSection"
+        <Border Grid.Row="4" x:Name="HwSection"
                 Background="{DynamicResource BgBrush}" Visibility="Collapsed">
             <Grid Margin="8,6,8,6">
                 <Grid.RowDefinitions>
