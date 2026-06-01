@@ -393,11 +393,11 @@
                                 <TextBlock x:Name="CpuTempFloat" Text="—"
                                            FontSize="28" FontWeight="Bold"
                                            FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource AccentBrush}"
+                                           Foreground="{DynamicResource ChartCpuBrush}"
                                            Padding="0,4" />
-                                <TextBlock Text="°" FontSize="14" FontWeight="Bold"
+                                <TextBlock x:Name="CpuTempDegree" Text="°" FontSize="14" FontWeight="Bold"
                                            FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource AccentBrush}"
+                                           Foreground="{DynamicResource ChartCpuBrush}"
                                            VerticalAlignment="Bottom" Margin="2,0,0,6" />
                             </StackPanel>
                             <Border Grid.Row="2" x:Name="CpuBarBg"
@@ -405,7 +405,7 @@
                                     CornerRadius="2" Height="3" Margin="0,0,0,4">
                                 <Border x:Name="CpuBarFill" CornerRadius="2"
                                         HorizontalAlignment="Left" Height="3" Width="0"
-                                        Background="{DynamicResource AccentGradientBrush}" />
+                                        Background="{DynamicResource ChartCpuBrush}" />
                             </Border>
                             <TextBlock Grid.Row="3" x:Name="CpuStatsText" FontSize="10"
                                        Foreground="{DynamicResource SubtleTextBrush}"
@@ -433,11 +433,11 @@
                                 <TextBlock x:Name="GpuTempFloat" Text="—"
                                            FontSize="28" FontWeight="Bold"
                                            FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartUpBrush}"
+                                           Foreground="{DynamicResource ChartGpuBrush}"
                                            Padding="0,4" />
-                                <TextBlock Text="°" FontSize="14" FontWeight="Bold"
+                                <TextBlock x:Name="GpuTempDegree" Text="°" FontSize="14" FontWeight="Bold"
                                            FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartUpBrush}"
+                                           Foreground="{DynamicResource ChartGpuBrush}"
                                            VerticalAlignment="Bottom" Margin="2,0,0,6" />
                             </StackPanel>
                             <Border Grid.Row="2" x:Name="GpuBarBg"
@@ -445,7 +445,7 @@
                                     CornerRadius="2" Height="3" Margin="0,0,0,4">
                                 <Border x:Name="GpuBarFill" CornerRadius="2"
                                         HorizontalAlignment="Left" Height="3" Width="0"
-                                        Background="{DynamicResource ChartUpBrush}" />
+                                        Background="{DynamicResource ChartGpuBrush}" />
                             </Border>
                             <TextBlock Grid.Row="3" x:Name="GpuStatsText" FontSize="10"
                                        Foreground="{DynamicResource SubtleTextBrush}"

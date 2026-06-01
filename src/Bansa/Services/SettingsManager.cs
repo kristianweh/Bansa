@@ -30,8 +30,16 @@ public class BansaSettings
     public bool UseWindowsAccent { get; set; } = true;   // chart + accent follow OS accent
     public string DownColorHex { get; set; } = "#5DADE2";
     public string UpColorHex   { get; set; } = "#F39C12";
-    public string TrayDownColorHex { get; set; } = "#5DADE2";
-    public string TrayUpColorHex   { get; set; } = "#F39C12";
+    // Hardware monitor chip colors (independent from network graph)
+    public string CpuColorHex { get; set; } = "#5DADE2";
+    public string GpuColorHex { get; set; } = "#FF8832";
+    public string RamColorHex { get; set; } = "#10B981";
+    // Temperature gradient endpoints (cold → hot)
+    public string TempColdColorHex { get; set; } = "#70C8FF";
+    public string TempHotColorHex  { get; set; } = "#FF8080";
+    // Ping gradient endpoints (good → bad)
+    public string PingGoodColorHex { get; set; } = "#10B981";
+    public string PingBadColorHex  { get; set; } = "#F43F5E";
 
     // ── Global upload cap ────────────────────────────────────────────────────
     // A system-wide QoS ceiling (no app filter) applied by Gaming Mode.

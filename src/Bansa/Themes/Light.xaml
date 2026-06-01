@@ -55,6 +55,9 @@
     <SolidColorBrush x:Key="BorderBrush"      Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="ChartDownBrush"   Color="{StaticResource ChartDownColor}" />
     <SolidColorBrush x:Key="ChartUpBrush"     Color="{StaticResource ChartUpColor}" />
+    <SolidColorBrush x:Key="ChartCpuBrush"    Color="#007BA8" />
+    <SolidColorBrush x:Key="ChartGpuBrush"    Color="#B86020" />
+    <SolidColorBrush x:Key="ChartRamBrush"    Color="#1A8A52" />
 
     <!-- Gradient brushes (mirrors Dark.xaml structure — see there for notes) -->
     <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,0">

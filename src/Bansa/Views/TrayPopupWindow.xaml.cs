@@ -87,17 +87,15 @@ public partial class TrayPopupWindow : Window
         Opacity = 0;
         if (!IsVisible) Show();
 
-        // Restore saved click-through preference on the first ever show.
-        // The HWND is guaranteed to exist once Show() has been called.
+        // Apply the saved click-through preference on the first ever show.
+        // HWND is guaranteed to exist once Show() has been called, so Win32 work is safe here.
         if (!_clickThroughRestored)
         {
             _clickThroughRestored = true;
             var saved = App.Settings?.TrayClickThrough ?? false;
-            if (saved != _clickThrough)
-            {
-                TrayClickThroughBtn.IsChecked = saved;
-                SetClickThrough(saved);
-            }
+            _clickThrough = saved;
+            TrayClickThroughBtn.IsChecked = saved;
+            if (saved) SetClickThrough(true);
         }
 
         // Refresh hardware bars now that layout is measured (ActualWidth is valid)
@@ -149,13 +147,11 @@ public partial class TrayPopupWindow : Window
         SplitSpeedText(Format.Rate(totalUp),   TotalUp,   TotalUpUnit);
         SplitSpeedText(pingMs < 0 ? "— ms" : $"{pingMs} ms", PingText, PingUnit);
 
-        // Ping colour — applied to both value and unit TextBlocks
+        // Ping colour — smooth heat gradient applied to both value and unit TextBlocks
         Brush pingBrush = pingMs < 0
             ? (Application.Current.TryFindResource("AccentBrush") as Brush
                ?? new SolidColorBrush(Color.FromArgb(160, 150, 150, 180)))
-            : pingMs < 40 ? new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80))
-            : pingMs < 80 ? new SolidColorBrush(Color.FromRgb(0xFB, 0xD2, 0x24))
-                          : new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+            : new SolidColorBrush(PingHeatColor(pingMs));
         PingText.Foreground = pingBrush;
         PingUnit.Foreground = pingBrush;
 
@@ -358,6 +354,31 @@ public partial class TrayPopupWindow : Window
         try { return (Color)ColorConverter.ConvertFromString(hex); } catch { return fallback; }
     }
 
+    // ── Color heat helpers ────────────────────────────────────────────────────
+    private static Color LerpColor(Color a, Color b, double t)
+        => Color.FromRgb(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t));
+    private static Color TempHeatColor(double tempC)
+    {
+        var cold = ParseHex2(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
+        var hot  = ParseHex2(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
+        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
+    }
+    private static Color PingHeatColor(int ms)
+    {
+        var good = ParseHex2(App.Settings?.PingGoodColorHex, Color.FromRgb(0x10, 0xB9, 0x81));
+        var bad  = ParseHex2(App.Settings?.PingBadColorHex,  Color.FromRgb(0xF4, 0x3F, 0x5E));
+        return LerpColor(good, bad, Math.Clamp((ms - 40.0) / 80.0, 0, 1));
+    }
+    private static Color ParseHex2(string? hex, Color fallback)
+    {
+        if (string.IsNullOrEmpty(hex)) return fallback;
+        try { return (Color)ColorConverter.ConvertFromString(hex); }
+        catch { return fallback; }
+    }
+
     // ── Hardware strip update ─────────────────────────────────────────────────
 
     private void UpdateTrayHardware(HardwareSnapshot snap)
@@ -373,6 +394,8 @@ public partial class TrayPopupWindow : Window
             cpuDetail.Append($"{snap.CpuFreqMHz / 1000f:0.0} GHz");
         }
         TrayHwCpuDetail.Text = cpuDetail.ToString();
+        if (snap.CpuTemp > 0)
+            TrayHwCpuDetail.Foreground = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
 
         // GPU
         TrayHwGpuPct.Text = $"{snap.GpuLoad:0}%";
@@ -385,6 +408,8 @@ public partial class TrayPopupWindow : Window
             gpuDetail.Append($"{snap.GpuVramUsedMb / 1024f:0.1}/{snap.GpuVramTotalMb / 1024f:0.0}G");
         }
         TrayHwGpuDetail.Text = gpuDetail.ToString();
+        if (snap.GpuTemp > 0)
+            TrayHwGpuDetail.Foreground = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
 
         // RAM
         if (snap.RamTotalGb > 0)
@@ -403,6 +428,14 @@ public partial class TrayPopupWindow : Window
 
     // ── Window toggle handlers ────────────────────────────────────────────────
 
+    // ── Public state accessors (used by TrayIconManager context menu) ─────────
+    public bool IsAlwaysOnTop
+    {
+        get => Topmost;
+        set { Topmost = value; TrayPinBtn.IsChecked = value; }
+    }
+    public bool IsClickThrough => _clickThrough;
+
     private void OnTrayPinClick(object sender, RoutedEventArgs e)
     {
         Topmost = TrayPinBtn.IsChecked == true;
@@ -410,25 +443,24 @@ public partial class TrayPopupWindow : Window
 
     private void OnTrayClickThroughClick(object sender, RoutedEventArgs e)
     {
-        // The hwnd is guaranteed to exist once the button is clickable (window is visible).
         SetClickThrough(TrayClickThroughBtn.IsChecked == true);
     }
 
-    /// <summary>
-    /// Toggles WS_EX_TRANSPARENT so mouse events pass through the popup to whatever
-    /// is underneath. The window already carries WS_EX_LAYERED (AllowsTransparency=True),
-    /// which is required for WS_EX_TRANSPARENT to work correctly.
-    /// </summary>
-    private void SetClickThrough(bool enable)
+    public void SetClickThrough(bool enable)
     {
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        const int GWL_EXSTYLE       = -20;
-        const int WS_EX_TRANSPARENT = 0x00000020;
-        int style = NativeMethods.GetWindowLong(hwnd, GWL_EXSTYLE);
-        NativeMethods.SetWindowLong(hwnd, GWL_EXSTYLE,
-            enable ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT);
         _clickThrough = enable;
-        // Persist so the preference is restored next time the popup opens
+        TrayClickThroughBtn.IsChecked = enable;
+
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            const int GWL_EXSTYLE       = -20;
+            const int WS_EX_TRANSPARENT = 0x00000020;
+            int style = NativeMethods.GetWindowLong(hwnd, GWL_EXSTYLE);
+            NativeMethods.SetWindowLong(hwnd, GWL_EXSTYLE,
+                enable ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT);
+        }
+
         if (App.Settings is not null)
         {
             App.Settings.TrayClickThrough = enable;
@@ -448,6 +480,41 @@ public partial class TrayPopupWindow : Window
         const int WS_EX_TOOLWINDOW = 0x00000080;
         int style = NativeMethods.GetWindowLong(hwnd, GWL_EXSTYLE);
         NativeMethods.SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+
+        // Hook WM_NCHITTEST so the toggle buttons remain clickable even in click-through mode.
+        // When _clickThrough is active, WS_EX_TRANSPARENT causes DefWindowProc to return
+        // HTTRANSPARENT for the whole window. We intercept first and return HTCLIENT for the
+        // button panel, letting all other regions stay transparent.
+        var src = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+        src?.AddHook(WndProcHook);
+    }
+
+    private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_NCHITTEST  = 0x0084;
+        const int HTCLIENT      = 1;
+
+        if (msg == WM_NCHITTEST && _clickThrough)
+        {
+            int sx = unchecked((short)((long)lParam & 0xFFFF));
+            int sy = unchecked((short)(((long)lParam >> 16) & 0xFFFF));
+
+            var hwndSrc = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+            if (hwndSrc?.CompositionTarget?.TransformFromDevice is {} m && TrayTogglePanel.IsLoaded)
+            {
+                var logical   = m.Transform(new Point(sx, sy));
+                var winRel    = new Point(logical.X - Left, logical.Y - Top);
+                var origin    = TrayTogglePanel.TranslatePoint(new Point(0, 0), this);
+                var panelRect = new Rect(origin.X, origin.Y,
+                                         TrayTogglePanel.ActualWidth, TrayTogglePanel.ActualHeight);
+                if (panelRect.Contains(winRel))
+                {
+                    handled = true;
+                    return new IntPtr(HTCLIENT);
+                }
+            }
+        }
+        return IntPtr.Zero;
     }
 
     private static class NativeMethods

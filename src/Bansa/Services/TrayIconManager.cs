@@ -52,12 +52,32 @@ public sealed class TrayIconManager : IDisposable
         _ownerWindow = ownerWindow;
         _iconSize = ClampSize(App.Settings?.TrayIconSize ?? 96);
 
-        _tray = new WinForms.NotifyIcon { Visible = true, Text = "Bansa" };
+        _tray = new WinForms.NotifyIcon { Visible = true };
         _tray.MouseClick += OnTrayClick;
         _tray.MouseMove  += OnTrayMouseMove;
 
+        _popup = new TrayPopupWindow();
+
+        var pinItem = new WinForms.ToolStripMenuItem("Always on top") { CheckOnClick = true, Checked = true };
+        var ctItem  = new WinForms.ToolStripMenuItem("Click through")  { CheckOnClick = true, Checked = false };
+        pinItem.Click += (_, _) =>
+            Application.Current.Dispatcher.Invoke(() => _popup.IsAlwaysOnTop = pinItem.Checked);
+        ctItem.Click += (_, _) =>
+            Application.Current.Dispatcher.Invoke(() => _popup.SetClickThrough(ctItem.Checked));
+
+        var popupMenu = new WinForms.ToolStripMenuItem("Popup Window");
+        popupMenu.DropDownItems.Add(pinItem);
+        popupMenu.DropDownItems.Add(ctItem);
+
         var menu = new WinForms.ContextMenuStrip();
+        menu.Opening += (_, _) =>
+        {
+            pinItem.Checked = _popup.IsAlwaysOnTop;
+            ctItem.Checked  = _popup.IsClickThrough;
+        };
         menu.Items.Add("Show Bansa", null, (_, _) => ShowMainWindow());
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add(popupMenu);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) =>
         {
@@ -67,8 +87,6 @@ public sealed class TrayIconManager : IDisposable
                 Application.Current.Shutdown();
         });
         _tray.ContextMenuStrip = menu;
-
-        _popup = new TrayPopupWindow();
 
         // Cursor poll every 120ms: if cursor is no longer in the taskbar area
         // or over the popup, fade the popup out.
@@ -191,8 +209,8 @@ public sealed class TrayIconManager : IDisposable
         int slot   = Math.Max(16, GetSystemMetrics(SM_CXSMICON));
         int render = slot * 4;
 
-        var downColor = ParseHex(App.Settings?.TrayDownColorHex, Color.FromArgb(255, 93, 173, 226));
-        var upColor   = ParseHex(App.Settings?.TrayUpColorHex,   Color.FromArgb(255, 243, 156, 18));
+        var downColor = ParseHex(App.Settings?.DownColorHex, Color.FromArgb(255, 93, 173, 226));
+        var upColor   = ParseHex(App.Settings?.UpColorHex,   Color.FromArgb(255, 243, 156, 18));
 
         float dNorm = LogNorm(downBps);
         float uNorm = LogNorm(upBps);
@@ -302,11 +320,7 @@ public sealed class TrayIconManager : IDisposable
 
     private void UpdateTooltip(long downBps, long upBps, int pingMs)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine($"↓ {Format.Rate(downBps)}   ↑ {Format.Rate(upBps)}");
-        sb.AppendLine($"Ping: {(pingMs < 0 ? "—" : $"{pingMs} ms")}");
-        sb.Append("Hover for chart · Click to open Bansa");
-        var text = sb.ToString();
+        var text = $"↓ {Format.Rate(downBps)}   ↑ {Format.Rate(upBps)}\nPing: {(pingMs < 0 ? "—" : $"{pingMs} ms")}";
         if (text.Length > 127) text = text.Substring(0, 127);
         _tray.Text = text;
     }

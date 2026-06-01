@@ -57,6 +57,9 @@
     <SolidColorBrush x:Key="BorderBrush"      Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="ChartDownBrush"   Color="{StaticResource ChartDownColor}" />
     <SolidColorBrush x:Key="ChartUpBrush"     Color="{StaticResource ChartUpColor}" />
+    <SolidColorBrush x:Key="ChartCpuBrush"    Color="#5DADE2" />
+    <SolidColorBrush x:Key="ChartGpuBrush"    Color="#FF8832" />
+    <SolidColorBrush x:Key="ChartRamBrush"    Color="#10B981" />
 
     <!-- ── Gradient brushes ──────────────────────────────────────────────── -->
     <!-- Pre-defined as resources so ControlTemplates and Styles can reference them

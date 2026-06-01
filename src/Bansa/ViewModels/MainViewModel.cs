@@ -284,8 +284,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateChartBrush("ChartUpBrush", hex);
     }
 
-    public void SetTrayDownColor(string hex) { App.Settings.TrayDownColorHex = hex; SettingsManager.Save(App.Settings); }
-    public void SetTrayUpColor(string hex)   { App.Settings.TrayUpColorHex   = hex; SettingsManager.Save(App.Settings); }
+    public void SetCpuColor(string hex)  { App.Settings.CpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartCpuBrush", hex); }
+    public void SetGpuColor(string hex)  { App.Settings.GpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartGpuBrush", hex); }
+    public void SetRamColor(string hex)  { App.Settings.RamColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartRamBrush", hex); }
+    public void SetTempColdColor(string hex) { App.Settings.TempColdColorHex = hex; SettingsManager.Save(App.Settings); }
+    public void SetTempHotColor(string hex)  { App.Settings.TempHotColorHex  = hex; SettingsManager.Save(App.Settings); }
+    public void SetPingGoodColor(string hex) { App.Settings.PingGoodColorHex = hex; SettingsManager.Save(App.Settings); }
+    public void SetPingBadColor(string hex)  { App.Settings.PingBadColorHex  = hex; SettingsManager.Save(App.Settings); }
 
     private static void UpdateChartBrush(string resourceKey, string hex)
     {

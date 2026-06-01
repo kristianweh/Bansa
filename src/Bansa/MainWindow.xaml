@@ -524,7 +524,27 @@
                         <!-- CPU chip -->
                         <Border Grid.Column="0" Style="{StaticResource Card}" Padding="20,14"
                                 Cursor="Hand" MouseLeftButtonDown="OnDashHardwareClick"
-                                ToolTip="Click to open Hardware tab">
+                                ToolTip="Click to open Hardware tab"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Border.MouseEnter">
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                         To="-4" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard></BeginStoryboard>
+                                </EventTrigger>
+                                <EventTrigger RoutedEvent="Border.MouseLeave">
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                         To="0" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard></BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -534,7 +554,7 @@
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="&#xE950;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource AccentBrush}"
+                                                   FontSize="13" Foreground="{DynamicResource ChartCpuBrush}"
                                                    VerticalAlignment="Center" Margin="0,0,7,0" />
                                         <TextBlock x:Name="DashCpuName" Text="CPU" FontSize="12" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" />
@@ -543,15 +563,15 @@
                                         <TextBlock x:Name="DashCpuPct" Text="—"
                                                    FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
                                                    Padding="0,3"
-                                                   Foreground="{DynamicResource AccentBrush}" />
-                                        <TextBlock Text="°C" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ChartCpuBrush}" />
+                                        <TextBlock x:Name="DashCpuTempSign" Text="°C" FontSize="10" FontWeight="SemiBold"
                                                    FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   Foreground="{DynamicResource ChartCpuBrush}"
                                                    VerticalAlignment="Bottom" Margin="2,0,0,6" />
                                     </StackPanel>
                                 </Grid>
                                 <ProgressBar x:Name="DashCpuBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,8" />
+                                             Foreground="{DynamicResource ChartCpuBrush}" Margin="0,0,0,8" />
                                 <Grid Grid.Row="2">
                                     <TextBlock x:Name="DashCpuTemp" Text="" FontSize="11"
                                                Foreground="{DynamicResource SubtleTextBrush}" />
@@ -565,7 +585,27 @@
                         <!-- GPU chip -->
                         <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20,14"
                                 Cursor="Hand" MouseLeftButtonDown="OnDashHardwareClick"
-                                ToolTip="Click to open Hardware tab">
+                                ToolTip="Click to open Hardware tab"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Border.MouseEnter">
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                         To="-4" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard></BeginStoryboard>
+                                </EventTrigger>
+                                <EventTrigger RoutedEvent="Border.MouseLeave">
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                         To="0" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard></BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -575,7 +615,7 @@
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="&#xE7F4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource ChartUpBrush}"
+                                                   FontSize="13" Foreground="{DynamicResource ChartGpuBrush}"
                                                    VerticalAlignment="Center" Margin="0,0,7,0" />
                                         <TextBlock x:Name="DashGpuName" Text="GPU" FontSize="12" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" />
@@ -583,15 +623,15 @@
                                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                                         <TextBlock x:Name="DashGpuPct" Text="—"
                                                    FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartUpBrush}" />
-                                        <TextBlock Text="°C" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ChartGpuBrush}" />
+                                        <TextBlock x:Name="DashGpuTempSign" Text="°C" FontSize="10" FontWeight="SemiBold"
                                                    FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartUpBrush}"
+                                                   Foreground="{DynamicResource ChartGpuBrush}"
                                                    VerticalAlignment="Bottom" Margin="2,0,0,4" />
                                     </StackPanel>
                                 </Grid>
                                 <ProgressBar x:Name="DashGpuBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource ChartUpBrush}" Margin="0,0,0,8" />
+                                             Foreground="{DynamicResource ChartGpuBrush}" Margin="0,0,0,8" />
                                 <Grid Grid.Row="2">
                                     <TextBlock x:Name="DashGpuTemp" Text="" FontSize="11"
                                                Foreground="{DynamicResource SubtleTextBrush}" />
@@ -615,22 +655,22 @@
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="&#xE179;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource SuccessBrush}"
+                                                   FontSize="13" Foreground="{DynamicResource ChartRamBrush}"
                                                    VerticalAlignment="Center" Margin="0,0,7,0" />
                                         <TextBlock Text="RAM" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                                         <TextBlock x:Name="DashRamPct" Text="—"
                                                    FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource SuccessBrush}" />
+                                                   Foreground="{DynamicResource ChartRamBrush}" />
                                         <TextBlock Text="%" FontSize="10" FontWeight="SemiBold"
                                                    FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource SuccessBrush}"
+                                                   Foreground="{DynamicResource ChartRamBrush}"
                                                    VerticalAlignment="Bottom" Margin="2,0,0,4" />
                                     </StackPanel>
                                 </Grid>
                                 <ProgressBar x:Name="DashRamBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource SuccessBrush}" Margin="0,0,0,8" />
+                                             Foreground="{DynamicResource ChartRamBrush}" Margin="0,0,0,8" />
                                 <Grid Grid.Row="2">
                                     <TextBlock x:Name="DashRamUsed" Text="" FontSize="11"
                                                Foreground="{DynamicResource SubtleTextBrush}" />
@@ -674,7 +714,33 @@
                                       RowHeight="38"
                                       VirtualizingPanel.IsVirtualizing="True"
                                       MouseDoubleClick="OnAppDoubleClick"
-                                      PreviewMouseDoubleClick="OnColumnHeaderDoubleClick">
+                                      PreviewMouseDoubleClick="OnColumnHeaderDoubleClick"
+                                      PreviewMouseRightButtonDown="OnDashAppGridRowRightClick">
+                                <DataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Click="OnPinClick">
+                                            <MenuItem.Header>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                               FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                    <TextBlock Text="Pin to top" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </MenuItem.Header>
+                                        </MenuItem>
+                                        <MenuItem Header="Unpin" Click="OnUnpinClick" />
+                                        <Separator />
+                                        <MenuItem Header="Set limits…" Click="OnSetLimitClick" />
+                                        <MenuItem Header="Clear limits" Click="OnClearLimitsClick" />
+                                        <Separator />
+                                        <MenuItem Header="Block this app" Click="OnBlockClick" />
+                                        <MenuItem Header="Unblock this app" Click="OnUnblockClick" />
+                                        <Separator />
+                                        <MenuItem Header="Mark as high-priority (game / voice)" Click="OnMarkGameClick" />
+                                        <MenuItem Header="Clear high-priority mark" Click="OnUnmarkGameClick" />
+                                        <Separator />
+                                        <MenuItem Header="Show individual processes" Click="OnShowPidsClick" />
+                                    </ContextMenu>
+                                </DataGrid.ContextMenu>
                                 <DataGrid.RowStyle>
                                     <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                                         <Setter Property="ToolTip" Value="{Binding HourlyTooltip}" />
@@ -1666,26 +1732,64 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Network graph colors -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Colors" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Text="Network Graph" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                     <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
-                                               TextWrapping="Wrap"
-                                               Text="Pick colors for the live graph and the tray icon. Click a swatch to apply." />
-                                    <TextBlock Text="Graph — Download" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
+                                               TextWrapping="Wrap" Text="Colors for the live bandwidth graph. Tray icon bars follow these colors." />
+                                    <TextBlock Text="Download" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
                                     <ItemsControl x:Name="DownGraphSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <TextBlock Text="Graph — Upload" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <TextBlock Text="Upload" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
                                     <ItemsControl x:Name="UpGraphSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <TextBlock Text="Tray icon — Down line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="TrayDownSwatches">
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Hardware chip colors -->
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Hardware" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
+                                               TextWrapping="Wrap" Text="Colors for CPU, GPU and RAM cards and graphs." />
+                                    <TextBlock Text="CPU" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
+                                    <ItemsControl x:Name="CpuColorSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <TextBlock Text="Tray icon — Up line" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="TrayUpSwatches">
+                                    <TextBlock Text="GPU" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="GpuColorSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="RAM" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="RamColorSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Gradient colors -->
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Gradient Indicators" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
+                                               TextWrapping="Wrap" Text="Start and end colors for temperature and ping heat gradients." />
+                                    <TextBlock Text="Temperature — cool" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
+                                    <ItemsControl x:Name="TempColdSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Temperature — hot" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="TempHotSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Ping — good" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="PingGoodSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Ping — bad" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="PingBadSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
                                 </StackPanel>
@@ -1763,10 +1867,10 @@
                                                        Text="—" FontSize="42" FontWeight="Bold"
                                                        Padding="0,4"
                                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                                       Foreground="{DynamicResource AccentBrush}" />
-                                            <TextBlock Text="°C" FontSize="20" FontWeight="Bold"
+                                                       Foreground="{DynamicResource ChartCpuBrush}" />
+                                            <TextBlock x:Name="CpuTempSign" Text="°C" FontSize="20" FontWeight="Bold"
                                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       Foreground="{DynamicResource ChartCpuBrush}"
                                                        VerticalAlignment="Bottom" Margin="3,0,0,10" />
                                         </StackPanel>
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -1786,7 +1890,7 @@
                                     <!-- Progress bar -->
                                     <ProgressBar x:Name="CpuUsageBar" Grid.Row="2"
                                                  Style="{StaticResource CardProgress}"
-                                                 Foreground="{DynamicResource AccentBrush}"
+                                                 Foreground="{DynamicResource ChartCpuBrush}"
                                                  Margin="0,0,0,16" />
 
                                     <!-- Stats row: Load | Freq -->
@@ -1878,10 +1982,10 @@
                                                        Text="—" FontSize="42" FontWeight="Bold"
                                                        Padding="0,4"
                                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                                       Foreground="{DynamicResource ChartUpBrush}" />
-                                            <TextBlock Text="°C" FontSize="20" FontWeight="Bold"
+                                                       Foreground="{DynamicResource ChartGpuBrush}" />
+                                            <TextBlock x:Name="GpuTempSign" Text="°C" FontSize="20" FontWeight="Bold"
                                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                                       Foreground="{DynamicResource ChartUpBrush}"
+                                                       Foreground="{DynamicResource ChartGpuBrush}"
                                                        VerticalAlignment="Bottom" Margin="3,0,0,10" />
                                         </StackPanel>
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -1901,7 +2005,7 @@
                                     <!-- GPU usage bar -->
                                     <ProgressBar x:Name="GpuUsageBar" Grid.Row="2"
                                                  Style="{StaticResource CardProgress}"
-                                                 Foreground="{DynamicResource ChartUpBrush}"
+                                                 Foreground="{DynamicResource ChartGpuBrush}"
                                                  Margin="0,0,0,8" />
 
                                     <!-- VRAM sub-row (collapsed until data arrives) -->

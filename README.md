@@ -2,7 +2,7 @@
 
 A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
-> **Status:** v0.5 — personal use, no commercial intent.
+> **Status:** v0.6 — personal use, no commercial intent.
 
 ---
 
@@ -72,13 +72,13 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Export to CSV.
 
 **Tools tab**
-- Browse and launch portable utilities (HWiNFO, OpenRGB, ShareX, etc.) stored in `Data\Tools\`.
-- Website button opens the tool's homepage for download.
+- Browse and launch portable utilities (OpenRGB, HWiNFO, ShareX, Chris Titus WinUtil, DDU) with real brand logos.
+- Tools stored as portables in `Data\Tools\`; website button opens the download page.
 
 **Settings**
 - *General* — units, global hotkey, startup & window behavior, settings backup (export/import), system cleanup.
 - *Network* — limit profiles, global upload cap, ISP connection speed, ping monitor targets, limit verification / speed test.
-- *Appearance* — dark/light theme, Windows accent color, chart and tray icon colors.
+- *Appearance* — dark/light theme, Windows accent color; separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
 
 ---
 

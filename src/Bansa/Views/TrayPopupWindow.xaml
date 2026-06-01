@@ -116,7 +116,7 @@
                                    VerticalAlignment="Bottom" Margin="3,0,0,3" />
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="3" Orientation="Vertical"
+                <StackPanel x:Name="TrayTogglePanel" Grid.Column="3" Orientation="Vertical"
                             VerticalAlignment="Center" Margin="10,0,0,0">
                     <ToggleButton x:Name="TrayPinBtn"
                                   Style="{StaticResource TrayIconToggle}"
@@ -227,7 +227,7 @@
                                 CornerRadius="2" Height="3" Margin="0,4,0,3">
                             <Border x:Name="TrayHwCpuBarFill" CornerRadius="2"
                                     HorizontalAlignment="Left" Height="3" Width="0"
-                                    Background="{DynamicResource AccentGradientBrush}" />
+                                    Background="{DynamicResource ChartCpuBrush}" />
                         </Border>
                         <TextBlock x:Name="TrayHwCpuDetail" Text="" FontSize="9"
                                    Foreground="{DynamicResource SubtleTextBrush}" />
@@ -248,13 +248,13 @@
                             <TextBlock x:Name="TrayHwGpuPct" Grid.Column="2"
                                        Text="—" FontSize="11" FontWeight="Bold"
                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                       Foreground="{DynamicResource ChartUpBrush}" Padding="0,2" />
+                                       Foreground="{DynamicResource ChartGpuBrush}" Padding="0,2" />
                         </Grid>
                         <Border x:Name="TrayHwGpuBarBg" Background="{DynamicResource BgBrush}"
                                 CornerRadius="2" Height="3" Margin="0,4,0,3">
                             <Border x:Name="TrayHwGpuBarFill" CornerRadius="2"
                                     HorizontalAlignment="Left" Height="3" Width="0"
-                                    Background="{DynamicResource ChartUpBrush}" />
+                                    Background="{DynamicResource ChartGpuBrush}" />
                         </Border>
                         <TextBlock x:Name="TrayHwGpuDetail" Text="" FontSize="9"
                                    Foreground="{DynamicResource SubtleTextBrush}" />

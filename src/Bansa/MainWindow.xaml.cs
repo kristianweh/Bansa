@@ -257,11 +257,19 @@ public partial class MainWindow : Window
         // Apply saved colors to override theme defaults before swatches are built
         Vm.SetDownColor(App.Settings.DownColorHex);
         Vm.SetUpColor(App.Settings.UpColorHex);
+        Vm.SetCpuColor(App.Settings.CpuColorHex);
+        Vm.SetGpuColor(App.Settings.GpuColorHex);
+        Vm.SetRamColor(App.Settings.RamColorHex);
 
-        PopulateSwatches(DownGraphSwatches, App.Settings.DownColorHex,     hex => Vm.SetDownColor(hex));
-        PopulateSwatches(UpGraphSwatches,   App.Settings.UpColorHex,       hex => Vm.SetUpColor(hex));
-        PopulateSwatches(TrayDownSwatches,  App.Settings.TrayDownColorHex, hex => Vm.SetTrayDownColor(hex));
-        PopulateSwatches(TrayUpSwatches,    App.Settings.TrayUpColorHex,   hex => Vm.SetTrayUpColor(hex));
+        PopulateSwatches(DownGraphSwatches,    App.Settings.DownColorHex,     hex => Vm.SetDownColor(hex));
+        PopulateSwatches(UpGraphSwatches,      App.Settings.UpColorHex,       hex => Vm.SetUpColor(hex));
+        PopulateSwatches(CpuColorSwatches,     App.Settings.CpuColorHex,      hex => Vm.SetCpuColor(hex));
+        PopulateSwatches(GpuColorSwatches,     App.Settings.GpuColorHex,      hex => Vm.SetGpuColor(hex));
+        PopulateSwatches(RamColorSwatches,     App.Settings.RamColorHex,      hex => Vm.SetRamColor(hex));
+        PopulateSwatches(TempColdSwatches,     App.Settings.TempColdColorHex, hex => Vm.SetTempColdColor(hex));
+        PopulateSwatches(TempHotSwatches,      App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
+        PopulateSwatches(PingGoodSwatches,     App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
+        PopulateSwatches(PingBadSwatches,      App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
 
         try
         {
@@ -1266,12 +1274,24 @@ public partial class MainWindow : Window
         DashCpuBar.Value = snap.CpuLoad;
         DashCpuTemp.Text = snap.CpuLoad > 0 ? $"{snap.CpuLoad:0}%" : "";
         DashCpuFreq.Text = snap.CpuFreqMHz > 0 ? $"{snap.CpuFreqMHz / 1000f:0.0} GHz" : "";
+        if (snap.CpuTemp > 0)
+        {
+            var cpuTempBrush = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
+            DashCpuPct.Foreground      = cpuTempBrush;
+            DashCpuTempSign.Foreground = cpuTempBrush;
+        }
 
         // GPU
         DashGpuPct.Text  = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";
         DashGpuBar.Value = snap.GpuLoad;
         DashGpuTemp.Text = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}°C" : "";
         DashGpuClock.Text = snap.GpuCoreMHz > 0 ? $"{snap.GpuCoreMHz:0} MHz" : "";
+        if (snap.GpuTemp > 0)
+        {
+            var gpuTempBrush = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
+            DashGpuPct.Foreground      = gpuTempBrush;
+            DashGpuTempSign.Foreground = gpuTempBrush;
+        }
         if (!string.IsNullOrEmpty(snap.GpuName))
             DashGpuName.Text = snap.GpuName.Replace("NVIDIA GeForce ", "").Replace("AMD Radeon ", "");
 
@@ -1286,6 +1306,33 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Color heat helpers ────────────────────────────────────────────────────
+    private static Color LerpColor(Color a, Color b, double t)
+        => Color.FromRgb(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t));
+    private static Color ParseHex(string? hex, Color fallback)
+    {
+        if (string.IsNullOrEmpty(hex)) return fallback;
+        try { return (Color)ColorConverter.ConvertFromString(hex); }
+        catch { return fallback; }
+    }
+    // ≤40 ms → PingGoodColor, 40–120 ms → lerp, 120 ms+ → PingBadColor
+    private static Color PingHeatColor(int ms)
+    {
+        var good = ParseHex(App.Settings?.PingGoodColorHex, Color.FromRgb(0x10, 0xB9, 0x81));
+        var bad  = ParseHex(App.Settings?.PingBadColorHex,  Color.FromRgb(0xF4, 0x3F, 0x5E));
+        return LerpColor(good, bad, Math.Clamp((ms - 40.0) / 80.0, 0, 1));
+    }
+    // ≤50 °C → TempColdColor, 50–90 °C → lerp, 90 °C+ → TempHotColor
+    private static Color TempHeatColor(double tempC)
+    {
+        var cold = ParseHex(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
+        var hot  = ParseHex(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
+        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
+    }
+
     private void UpdatePingColor(int pingMs)
     {
         Brush brush;
@@ -1296,10 +1343,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            Color c = pingMs < 40  ? Color.FromRgb(0x4A, 0xDE, 0x80)
-                    : pingMs < 80  ? Color.FromRgb(0xFB, 0xD2, 0x24)
-                                   : Color.FromRgb(0xF8, 0x71, 0x71);
-            brush = new SolidColorBrush(c);
+            brush = new SolidColorBrush(PingHeatColor(pingMs));
         }
         SidebarPingText.Foreground = brush;
         SidebarPingUnit.Foreground = brush;
@@ -1354,8 +1398,14 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(snap.CpuName))
             CpuCardName.Text = snap.CpuName;
         CpuUsageBar.Value = snap.CpuLoad;
-        CpuPct.Text       = snap.CpuTemp > 0 ? $"{snap.CpuTemp:0}" : "—";   // big = temperature
+        CpuPct.Text       = snap.CpuTemp > 0 ? $"{snap.CpuTemp:0}" : "—";
         CpuLoadLabel.Text = $"{snap.CpuLoad:0}";
+        if (snap.CpuTemp > 0)
+        {
+            var cpuB = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
+            CpuPct.Foreground      = cpuB;
+            CpuTempSign.Foreground = cpuB;
+        }
         // Show average frequency; if boost differs, append boost in parens
         if (snap.CpuFreqMHz > 0)
         {
@@ -1371,8 +1421,14 @@ public partial class MainWindow : Window
 
         // ── GPU ──────────────────────────────────────────────────────────────
         GpuUsageBar.Value = snap.GpuLoad;
-        GpuPct.Text       = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";   // big = temperature
+        GpuPct.Text       = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";
         GpuLoadLabel.Text = $"{snap.GpuLoad:0}";
+        if (snap.GpuTemp > 0)
+        {
+            var gpuB = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
+            GpuPct.Foreground      = gpuB;
+            GpuTempSign.Foreground = gpuB;
+        }
         if (!string.IsNullOrEmpty(snap.GpuName))
             GpuCardName.Text = snap.GpuName;
 
@@ -1467,9 +1523,11 @@ public partial class MainWindow : Window
         }
 
         DrawTempChart(CpuTempChart,  _cpuTempBuf, _tempBufHead, _tempBufCount,
-                      Color.FromRgb(0x5D, 0xAD, 0xE2), "°");   // AccentBrush blue
+                      (Application.Current.TryFindResource("ChartCpuBrush") as SolidColorBrush)?.Color
+                      ?? Color.FromRgb(0x5D, 0xAD, 0xE2), "°");
         DrawTempChart(GpuTempChart,  _gpuTempBuf, _tempBufHead, _tempBufCount,
-                      Color.FromRgb(0xF3, 0x9C, 0x12), "°");   // ChartUpBrush orange
+                      (Application.Current.TryFindResource("ChartGpuBrush") as SolidColorBrush)?.Color
+                      ?? Color.FromRgb(0xFF, 0x88, 0x32), "°");
         DrawTempChart(RamUsageChart, _ramPctBuf,  _tempBufHead, _tempBufCount,
                       Color.FromRgb(0x3D, 0xBA, 0x6F), "%");   // SuccessBrush green
 
@@ -1718,6 +1776,9 @@ public partial class MainWindow : Window
 
     private void OnAppGridHeaderRightClick(object sender, MouseButtonEventArgs e)
     {
+        var row = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
+        _contextApp = row?.DataContext as AppRowViewModel;
+
         var header = FindVisualAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject);
         if (header?.Column == null) return;
 
@@ -1770,7 +1831,15 @@ public partial class MainWindow : Window
 
     // ────────── Context menu / processes ──────────
 
-    private AppRowViewModel? Selected => AppGrid.SelectedItem as AppRowViewModel;
+    private AppRowViewModel? _contextApp;
+
+    private AppRowViewModel? Selected => _contextApp ?? AppGrid.SelectedItem as AppRowViewModel;
+
+    private void OnDashAppGridRowRightClick(object sender, MouseButtonEventArgs e)
+    {
+        var row = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
+        _contextApp = row?.DataContext as AppRowViewModel;
+    }
 
     private void OnPinClick(object sender, RoutedEventArgs e)
     { if (Selected is not null) Vm.PinAppCommand.Execute(Selected); }
@@ -1842,9 +1911,9 @@ public partial class MainWindow : Window
         var logoUri = theme == AppTheme.Dark
             ? new Uri("pack://application:,,,/Bansa;component/Resources/bansa-dark.png")
             : new Uri("pack://application:,,,/Bansa;component/Resources/bansa-light.png");
-        var bmp = new System.Windows.Media.Imaging.BitmapImage(logoUri);
-        BrandLogo.Source = bmp;
-        Icon = bmp;
+        BrandLogo.Source = new System.Windows.Media.Imaging.BitmapImage(logoUri);
+        Icon = System.Windows.Media.Imaging.BitmapFrame.Create(
+            new Uri("pack://application:,,,/Bansa;component/Resources/Icon_bansa-dark.ico"));
     }
     private void OnUnitBytesClick(object sender, RoutedEventArgs e) => Vm.UseBitsUnit = false;
     private void OnUnitBitsClick(object sender, RoutedEventArgs e)  => Vm.UseBitsUnit = true;
@@ -2043,10 +2112,18 @@ public partial class MainWindow : Window
         // Colors
         Vm.SetDownColor(App.Settings.DownColorHex);
         Vm.SetUpColor(App.Settings.UpColorHex);
-        PopulateSwatches(DownGraphSwatches, App.Settings.DownColorHex, hex => Vm.SetDownColor(hex));
-        PopulateSwatches(UpGraphSwatches,   App.Settings.UpColorHex,   hex => Vm.SetUpColor(hex));
-        PopulateSwatches(TrayDownSwatches,  App.Settings.TrayDownColorHex, hex => Vm.SetTrayDownColor(hex));
-        PopulateSwatches(TrayUpSwatches,    App.Settings.TrayUpColorHex,   hex => Vm.SetTrayUpColor(hex));
+        Vm.SetCpuColor(App.Settings.CpuColorHex);
+        Vm.SetGpuColor(App.Settings.GpuColorHex);
+        Vm.SetRamColor(App.Settings.RamColorHex);
+        PopulateSwatches(DownGraphSwatches, App.Settings.DownColorHex,     hex => Vm.SetDownColor(hex));
+        PopulateSwatches(UpGraphSwatches,   App.Settings.UpColorHex,       hex => Vm.SetUpColor(hex));
+        PopulateSwatches(CpuColorSwatches,  App.Settings.CpuColorHex,      hex => Vm.SetCpuColor(hex));
+        PopulateSwatches(GpuColorSwatches,  App.Settings.GpuColorHex,      hex => Vm.SetGpuColor(hex));
+        PopulateSwatches(RamColorSwatches,  App.Settings.RamColorHex,      hex => Vm.SetRamColor(hex));
+        PopulateSwatches(TempColdSwatches,  App.Settings.TempColdColorHex, hex => Vm.SetTempColdColor(hex));
+        PopulateSwatches(TempHotSwatches,   App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
+        PopulateSwatches(PingGoodSwatches,  App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
+        PopulateSwatches(PingBadSwatches,   App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
 
         // Behavior toggles
         InitBehaviourToggles();

@@ -212,6 +212,31 @@ public partial class FloatingGraphWindow : Window
     private SolidColorBrush DownFill   => _downFill   ??= Frozen(Color.FromArgb(80, _downColor.R, _downColor.G, _downColor.B));
     private SolidColorBrush UpFill     => _upFill     ??= Frozen(Color.FromArgb(48, _upColor.R,   _upColor.G,   _upColor.B));
 
+    // ── Color heat helpers ────────────────────────────────────────────────────
+    private static Color LerpColor(Color a, Color b, double t)
+        => Color.FromRgb(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t));
+    private static Color ParseHex(string? hex, Color fallback)
+    {
+        if (string.IsNullOrEmpty(hex)) return fallback;
+        try { return (Color)System.Windows.Media.ColorConverter.ConvertFromString(hex); }
+        catch { return fallback; }
+    }
+    private static Color PingHeatColor(int ms)
+    {
+        var good = ParseHex(App.Settings?.PingGoodColorHex, Color.FromRgb(0x10, 0xB9, 0x81));
+        var bad  = ParseHex(App.Settings?.PingBadColorHex,  Color.FromRgb(0xF4, 0x3F, 0x5E));
+        return LerpColor(good, bad, Math.Clamp((ms - 40.0) / 80.0, 0, 1));
+    }
+    private static Color TempHeatColor(double tempC)
+    {
+        var cold = ParseHex(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
+        var hot  = ParseHex(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
+        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
+    }
+
     // ── Ping ──────────────────────────────────────────────────────────────────
 
     private void UpdatePingDisplay(int pingMs)
@@ -229,36 +254,28 @@ public partial class FloatingGraphWindow : Window
             pingTarget = s?.PingTarget ?? "";
         PingTargetLabel.Text = pingTarget;
 
-        Color c;
-        string quality;
-
         if (pingMs < 0)
         {
-            // No ping data — use the theme's muted colour so it reads on both light & dark
             var muted = Application.Current.TryFindResource("MutedTextBrush") as System.Windows.Media.Brush
                         ?? new SolidColorBrush(Color.FromArgb(96, 128, 128, 128));
-            PingDot.Fill          = muted;
-            PingText.Foreground   = muted;
+            PingDot.Fill             = muted;
+            PingText.Foreground      = muted;
             FloatPingUnit.Foreground = muted;
-            PingJitterText.Text = "";
+            PingJitterText.Text      = "";
             return;
         }
 
         _pingHistory.Enqueue(pingMs);
         while (_pingHistory.Count > PingHistoryLen) _pingHistory.Dequeue();
 
-        if      (pingMs < 40) { c = Color.FromRgb(0x4A, 0xDE, 0x80); quality = "great"; }
-        else if (pingMs < 80) { c = Color.FromRgb(0xFB, 0xD2, 0x24); quality = "ok";    }
-        else                  { c = Color.FromRgb(0xF8, 0x71, 0x71); quality = "high";  }
-
-        var brush = new SolidColorBrush(c);
+        var brush = new SolidColorBrush(PingHeatColor(pingMs));
         PingDot.Fill             = brush;
         PingText.Foreground      = brush;
         FloatPingUnit.Foreground = brush;
 
         PingJitterText.Text = _pingHistory.Count >= 4
             ? $"±{_pingHistory.Max() - _pingHistory.Min()} ms"
-            : quality;
+            : (pingMs < 40 ? "great" : pingMs < 80 ? "ok" : "high");
     }
 
     // ── Chart rendering ────────────────────────────────────────────────────────
@@ -405,9 +422,14 @@ public partial class FloatingGraphWindow : Window
 
         // ── CPU ──────────────────────────────────────────────────────────────
         CpuTempFloat.Text = snap.CpuTemp > 0 ? $"{snap.CpuTemp:0}" : "—";
+        if (snap.CpuTemp > 0)
+        {
+            var cpuB = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
+            CpuTempFloat.Foreground  = cpuB;
+            CpuTempDegree.Foreground = cpuB;
+        }
         double cpuBgW = CpuBarBg.ActualWidth;
         CpuBarFill.Width = cpuBgW * snap.CpuLoad / 100.0;
-        // Line 1: load% + temp  Line 2: freq (avg)
         var cpuLines = new System.Text.StringBuilder();
         cpuLines.Append($"{snap.CpuLoad:0}%");
         if (snap.CpuTemp > 0) cpuLines.Append($"  {snap.CpuTemp:0}°C");
@@ -416,6 +438,12 @@ public partial class FloatingGraphWindow : Window
 
         // ── GPU ──────────────────────────────────────────────────────────────
         GpuTempFloat.Text = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";
+        if (snap.GpuTemp > 0)
+        {
+            var gpuB = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
+            GpuTempFloat.Foreground  = gpuB;
+            GpuTempDegree.Foreground = gpuB;
+        }
         double gpuBgW = GpuBarBg.ActualWidth;
         GpuBarFill.Width = gpuBgW * snap.GpuLoad / 100.0;
         var gpuLines = new System.Text.StringBuilder();
