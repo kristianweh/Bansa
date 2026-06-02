@@ -19,6 +19,15 @@ public sealed class ToolsViewModel
 {
     public ObservableCollection<ToolItem> Tools { get; } = [];
 
+    public RelayCommand OpenToolsFolderCommand { get; } = new RelayCommand(() =>
+    {
+        var dir = App.ToolsFolder;
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", dir)
+            { UseShellExecute = true });
+    });
+
     public ToolsViewModel()
     {
         var toolsDir = App.ToolsFolder;
@@ -60,6 +69,16 @@ public sealed class ToolsViewModel
             tileBrush:     Solid("#B94C00"),
             iconImagePath: "pack://application:,,,/Resources/logo_ctt.png",
             scriptCommand: "irm christitus.com/win | iex"));
+
+        // ── FanControl ────────────────────────────────────────────────────
+        Tools.Add(new ToolItem(
+            name:          "FanControl",
+            description:   "Highly customizable fan curves, mixing multiple sources in a single curve.",
+            tileBrush:     Solid("#1A3A6B"),
+            iconImagePath: "pack://application:,,,/Resources/logo_fancontrol.png",
+            toolsDir:      toolsDir,
+            exeName:       "FanControl.exe",
+            websiteUrl:    "https://getfancontrol.com/"));
 
         // ── DDU ───────────────────────────────────────────────────────────
         Tools.Add(new ToolItem(

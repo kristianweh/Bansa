@@ -60,6 +60,17 @@ public partial class TrayPopupWindow : Window
         // Bind stable collection once — never replace ItemsSource
         TopAppsList.ItemsSource = _topApps;
 
+        // Save position when user drags the popup window
+        LocationChanged += (_, _) =>
+        {
+            if (App.Settings is { } s)
+            {
+                s.TrayPopupX = Left;
+                s.TrayPopupY = Top;
+                SettingsManager.Save(s);
+            }
+        };
+
         // Subscribe to hardware monitor — fires every ~2 s on a background thread.
         // Dispatcher.InvokeAsync routes the UI update safely onto the UI thread.
         if (HardwareMonitor.Instance is { } hw)
@@ -69,15 +80,33 @@ public partial class TrayPopupWindow : Window
         }
     }
 
+    private void OnPopupDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+            DragMove();
+    }
+
     public void ShowAt(double screenX, double screenY)
     {
         var workingArea = SystemParameters.WorkArea;
-        var left = screenX - Width;
-        var top  = screenY - Height - 8;
-        if (left < workingArea.Left) left = workingArea.Left + 4;
-        if (top  < workingArea.Top)  top  = workingArea.Top + 4;
-        if (left + Width > workingArea.Right)   left = workingArea.Right - Width - 4;
-        if (top + Height > workingArea.Bottom)  top  = workingArea.Bottom - Height - 4;
+        double left, top;
+
+        if (App.Settings?.TrayPopupX >= 0 && App.Settings?.TrayPopupY >= 0)
+        {
+            // User has set a saved position — honour it (clamped to screen)
+            left = Math.Clamp(App.Settings.TrayPopupX, workingArea.Left + 4, workingArea.Right  - Width  - 4);
+            top  = Math.Clamp(App.Settings.TrayPopupY, workingArea.Top  + 4, workingArea.Bottom - Height - 4);
+        }
+        else
+        {
+            // Default: bottom-right corner
+            left = screenX - Width;
+            top  = screenY - Height - 8;
+            if (left < workingArea.Left) left = workingArea.Left + 4;
+            if (top  < workingArea.Top)  top  = workingArea.Top + 4;
+            if (left + Width > workingArea.Right)   left = workingArea.Right - Width - 4;
+            if (top + Height > workingArea.Bottom)  top  = workingArea.Bottom - Height - 4;
+        }
 
         Left = left;
         Top  = top;

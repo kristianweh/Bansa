@@ -111,6 +111,20 @@ public class BansaSettings
     // ── Tray hover popup ──────────────────────────────────────────────────────
     /// <summary>When true, the tray hover popup passes mouse events to windows underneath.</summary>
     public bool TrayClickThrough { get; set; } = false;
+
+    // ── Main window bounds ────────────────────────────────────────────────────
+    public double MainWindowX         { get; set; } = -1;
+    public double MainWindowY         { get; set; } = -1;
+    public double MainWindowW         { get; set; } = -1;
+    public double MainWindowH         { get; set; } = -1;
+    public bool   MainWindowMaximized { get; set; } = false;
+
+    // ── Tray popup position ───────────────────────────────────────────────────
+    public double TrayPopupX { get; set; } = -1;
+    public double TrayPopupY { get; set; } = -1;
+
+    // ── Network tab chart height (user-draggable via GridSplitter) ────────────
+    public double NetworkChartHeight { get; set; } = 130;
 }
 
 public static class SettingsManager

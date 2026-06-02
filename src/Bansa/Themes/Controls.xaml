@@ -926,7 +926,7 @@
         </Setter>
     </Style>
 
-    <!-- Full MenuItem ControlTemplate — no PART_GlyphPanel, no system-colour sidebars -->
+    <!-- MenuItem ControlTemplate — includes PART_Popup so sub-menu items render correctly -->
     <Style TargetType="MenuItem">
         <Setter Property="Background"      Value="Transparent" />
         <Setter Property="Foreground"      Value="{DynamicResource TextBrush}" />
@@ -936,49 +936,101 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
-                    <Border x:Name="bd"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="4"
-                            Margin="0,1"
-                            Padding="{TemplateBinding Padding}">
-                        <Grid Grid.IsSharedSizeScope="False">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" SharedSizeGroup="MenuIcon" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <!-- Icon or checkmark -->
-                            <Grid Grid.Column="0" Width="20" Margin="0,0,4,0">
-                                <ContentPresenter x:Name="IconPresenter"
-                                                  ContentSource="Icon"
-                                                  HorizontalAlignment="Center"
+                    <!-- Root Grid holds both the item row and the submenu popup -->
+                    <Grid>
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Margin="0,1"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid Grid.IsSharedSizeScope="False">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="MenuIcon" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!-- Icon or checkmark -->
+                                <Grid Grid.Column="0" Width="20" Margin="0,0,4,0">
+                                    <ContentPresenter x:Name="IconPresenter"
+                                                      ContentSource="Icon"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                    <TextBlock x:Name="CheckGlyph"
+                                               Text="✓"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               FontSize="13"
+                                               Visibility="Collapsed" />
+                                </Grid>
+                                <!-- Header text -->
+                                <ContentPresenter Grid.Column="1"
+                                                  ContentSource="Header"
                                                   VerticalAlignment="Center" />
-                                <TextBlock x:Name="CheckGlyph"
-                                           Text="✓"
-                                           HorizontalAlignment="Center"
+                                <!-- Keyboard gesture hint (hidden when HasItems) -->
+                                <TextBlock x:Name="GestureHint"
+                                           Grid.Column="2"
+                                           Text="{TemplateBinding InputGestureText}"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           Margin="24,0,4,0"
                                            VerticalAlignment="Center"
-                                           Foreground="{DynamicResource AccentBrush}"
-                                           FontSize="13"
+                                           FontSize="11" />
+                                <!-- Submenu arrow (shown when HasItems) -->
+                                <TextBlock x:Name="SubArrow"
+                                           Grid.Column="2"
+                                           Text="›"
+                                           FontSize="15"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,0,0"
                                            Visibility="Collapsed" />
                             </Grid>
-                            <!-- Header text -->
-                            <ContentPresenter Grid.Column="1"
-                                              ContentSource="Header"
-                                              VerticalAlignment="Center" />
-                            <!-- Keyboard gesture hint -->
-                            <TextBlock Grid.Column="2"
-                                       Text="{TemplateBinding InputGestureText}"
-                                       Foreground="{DynamicResource MutedTextBrush}"
-                                       Margin="24,0,4,0"
-                                       VerticalAlignment="Center"
-                                       FontSize="11" />
-                        </Grid>
-                    </Border>
+                        </Border>
+
+                        <!-- PART_Popup: required by WPF MenuItem to display the submenu flyout.
+                             Without this named part, IsSubmenuOpen is set on hover but nothing renders. -->
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               IsOpen="{Binding IsSubmenuOpen,
+                                        RelativeSource={RelativeSource TemplatedParent}}"
+                               Placement="Right"
+                               VerticalOffset="-9"
+                               HorizontalOffset="-3"
+                               PopupAnimation="Fade">
+                            <Border Background="{DynamicResource PanelBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="4">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="4"
+                                                      Opacity="0.45" Color="#000000"
+                                                      Direction="270" />
+                                </Border.Effect>
+                                <ScrollViewer CanContentScroll="True" MaxHeight="320">
+                                    <ItemsPresenter x:Name="ItemsPresenter"
+                                                    KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
                     <ControlTemplate.Triggers>
+                        <!-- Show submenu arrow and hide gesture hint when item has children -->
+                        <Trigger Property="HasItems" Value="True">
+                            <Setter TargetName="SubArrow"    Property="Visibility" Value="Visible" />
+                            <Setter TargetName="GestureHint" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentBrush}" />
                             <Setter Property="Foreground" Value="White" />
                             <Setter TargetName="CheckGlyph" Property="Foreground" Value="White" />
+                            <Setter TargetName="SubArrow"   Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsSubmenuOpen" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />

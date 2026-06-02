@@ -717,7 +717,7 @@
                                       PreviewMouseDoubleClick="OnColumnHeaderDoubleClick"
                                       PreviewMouseRightButtonDown="OnDashAppGridRowRightClick">
                                 <DataGrid.ContextMenu>
-                                    <ContextMenu>
+                                    <ContextMenu Opened="OnAppContextMenuOpened">
                                         <MenuItem Click="OnPinClick">
                                             <MenuItem.Header>
                                                 <StackPanel Orientation="Horizontal">
@@ -730,6 +730,11 @@
                                         <MenuItem Header="Unpin" Click="OnUnpinClick" />
                                         <Separator />
                                         <MenuItem Header="Set limits…" Click="OnSetLimitClick" />
+                                        <MenuItem Header="Quick profile ▶" Tag="QuickProfile">
+                                            <!-- Placeholder keeps the submenu popup template alive so items
+                                                 added at runtime during Opened are rendered correctly -->
+                                            <MenuItem Visibility="Collapsed" />
+                                        </MenuItem>
                                         <MenuItem Header="Clear limits" Click="OnClearLimitsClick" />
                                         <Separator />
                                         <MenuItem Header="Block this app" Click="OnBlockClick" />
@@ -970,6 +975,8 @@
                                     Margin="14,0,0,0" VerticalAlignment="Center">
                             <Button Content="All"      Padding="8,5" Margin="0,0,3,0"
                                     Click="OnPresetAll" ToolTip="Show all apps" />
+                            <Button Content="≥1 KB/s"  Padding="8,5" Margin="0,0,3,0"
+                                    Click="OnPreset1"   ToolTip="Hide apps below 1 KB/s" />
                             <Button Content="≥10 KB/s" Padding="8,5" Margin="0,0,3,0"
                                     Click="OnPreset10"  ToolTip="Hide apps below 10 KB/s" />
                             <Button Content="≥50 KB/s" Padding="8,5" Margin="0,0,14,0"
@@ -1023,7 +1030,7 @@
                                                FontSize="10" FontWeight="SemiBold"
                                                Foreground="{DynamicResource MutedTextBrush}"
                                                Margin="0,0,8,0" IsHitTestVisible="False" />
-                                    <TextBlock Text="30 s" FontSize="10"
+                                    <TextBlock x:Name="ChartWindowLabel" Text="30 s" FontSize="10"
                                                Foreground="{DynamicResource MutedTextBrush}"
                                                Margin="0,0,8,0" IsHitTestVisible="False" />
                                     <!-- SmallToggle: rounded box, not pill -->
@@ -1043,7 +1050,8 @@
                                     Background="Transparent"
                                     MouseMove="OnChartMouseMove"
                                     MouseLeave="OnChartMouseLeave"
-                                    MouseLeftButtonDown="OnChartClick" />
+                                    MouseLeftButtonDown="OnChartMouseDown"
+                                    MouseLeftButtonUp="OnChartMouseUp" />
                             <!-- Pause banner -->
                             <Border x:Name="PauseBanner" Grid.Row="1"
                                     HorizontalAlignment="Stretch" VerticalAlignment="Center"
@@ -1057,12 +1065,14 @@
                     </Border>
 
                     <!-- Drag handle between chart and app grid -->
-                    <GridSplitter Grid.Row="3"
+                    <GridSplitter x:Name="ChartSplitter"
+                                  Grid.Row="3"
                                   Height="6" HorizontalAlignment="Stretch"
                                   Background="Transparent"
                                   Cursor="SizeNS"
                                   ResizeDirection="Rows"
-                                  ResizeBehavior="PreviousAndNext">
+                                  ResizeBehavior="PreviousAndNext"
+                                  DragCompleted="OnChartSplitterDragCompleted">
                         <GridSplitter.Template>
                             <ControlTemplate TargetType="GridSplitter">
                                 <Border Background="Transparent" HorizontalAlignment="Stretch">
@@ -1319,7 +1329,7 @@
                             </DataGrid.Columns>
 
                             <DataGrid.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu Opened="OnAppContextMenuOpened">
                                     <MenuItem Click="OnPinClick">
                                         <MenuItem.Header>
                                             <StackPanel Orientation="Horizontal">
@@ -1332,6 +1342,9 @@
                                     <MenuItem Header="Unpin" Click="OnUnpinClick" />
                                     <Separator />
                                     <MenuItem Header="Set limits…" Click="OnSetLimitClick" />
+                                    <MenuItem Header="Quick profile ▶" Tag="QuickProfile">
+                                        <MenuItem Visibility="Collapsed" />
+                                    </MenuItem>
                                     <MenuItem Header="Clear limits" Click="OnClearLimitsClick" />
                                     <Separator />
                                     <MenuItem Header="Block this app" Click="OnBlockClick" />
@@ -1465,7 +1478,7 @@
                                     <Separator Margin="0,0,0,12" />
 
                                     <!-- Minimize on close -->
-                                    <Grid>
+                                    <Grid Margin="0,0,0,12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -1479,6 +1492,25 @@
                                         <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
                                                       x:Name="MinimizeOnCloseToggle"
                                                       Click="OnMinimizeOnCloseToggleClick" />
+                                    </Grid>
+
+                                    <Separator Margin="0,0,0,12" />
+
+                                    <!-- Show tray icon -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Show tray icon" FontWeight="SemiBold" />
+                                            <TextBlock Foreground="{DynamicResource MutedTextBrush}"
+                                                       FontSize="11" Margin="0,2,0,0"
+                                                       Text="Display the Bansa icon in the system tray. Disabling also removes the tray popup." />
+                                        </StackPanel>
+                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
+                                                      x:Name="ShowTrayIconToggle"
+                                                      Click="OnShowTrayIconToggleClick" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -1555,16 +1587,20 @@
                                                 <Grid Margin="0,0,0,6">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="110" />
-                                                        <ColumnDefinition Width="110" />
-                                                        <ColumnDefinition Width="50" />
+                                                        <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" />
                                                     <TextBlock Grid.Column="1" Text="{Binding UploadKbps}" VerticalAlignment="Center"
                                                                FontFamily="{StaticResource RobotoMonoFamily}" Foreground="{DynamicResource SubtleTextBrush}" />
                                                     <TextBlock Grid.Column="2" Text="{Binding DownloadKbps}" VerticalAlignment="Center"
                                                                FontFamily="{StaticResource RobotoMonoFamily}" Foreground="{DynamicResource SubtleTextBrush}" />
-                                                    <Button Grid.Column="3" Content="✕" Padding="6,2" FontSize="10"
+                                                    <Button Grid.Column="3" Content="&#x270E;" Padding="6,2" FontSize="12"
+                                                            Foreground="{DynamicResource AccentBrush}"
+                                                            Click="OnEditProfileClick" Margin="0,0,4,0" />
+                                                    <Button Grid.Column="4" Content="&#x2715;" Padding="6,2" FontSize="10"
                                                             Foreground="{DynamicResource DangerBrush}"
                                                             Tag="{Binding Name}" Click="OnRemoveProfile" />
                                                 </Grid>
@@ -1876,13 +1912,13 @@
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Margin="0,0,0,12">
                                             <TextBlock x:Name="CpuStatMax" Text="max —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource SubtleTextBrush}" />
                                             <TextBlock x:Name="CpuStatAvg" Text="avg —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource MutedTextBrush}" />
                                             <TextBlock x:Name="CpuStatMin" Text="min —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource SubtleTextBrush}" />
                                         </StackPanel>
                                     </Grid>
@@ -1991,13 +2027,13 @@
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Margin="0,0,0,12">
                                             <TextBlock x:Name="GpuStatMax" Text="max —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource SubtleTextBrush}" />
                                             <TextBlock x:Name="GpuStatAvg" Text="avg —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource MutedTextBrush}" />
                                             <TextBlock x:Name="GpuStatMin" Text="min —°"
-                                                       FontSize="10" FontFamily="{StaticResource RobotoMonoFamily}"
+                                                       FontSize="13" FontFamily="{StaticResource RobotoMonoFamily}"
                                                        Foreground="{DynamicResource SubtleTextBrush}" />
                                         </StackPanel>
                                     </Grid>

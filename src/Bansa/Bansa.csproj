@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Bansa</AssemblyName>
     <RootNamespace>Bansa</RootNamespace>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <ApplicationIcon>Resources\Icon_bansa-dark.ico</ApplicationIcon>
     <Company>Personal</Company>
     <Product>Bansa</Product>
@@ -35,6 +35,7 @@
     <Resource Include="Resources\logo_sharex.png" />
     <Resource Include="Resources\logo_ctt.png" />
     <Resource Include="Resources\logo_ddu.png" />
+    <Resource Include="Resources\logo_fancontrol.png" />
     <!-- Inter — bundled as WPF resources so they render identically
          on any Windows install regardless of whether the user has the font installed.
          Reference in XAML: pack://application:,,,/Fonts/#Inter -->
@@ -59,23 +60,35 @@
 
   <!--
     ══ Defender false-positive mitigation ════════════════════════════════════════
-    KernelTraceControl.dll and msdia140.dll ship with the TraceEvent NuGet package
-    for heap-snapshot profiling — a feature Bansa never uses.  Their presence in the
-    output folder combined with the kernel ETW session triggers Windows Defender's
-    heuristic for kernel-level network sniffers ("Bansa.sys – Severe threat").
+    Two sources of Defender false-positives are cleaned up here:
 
-    These targets run after every Build and Publish and simply delete the two DLLs.
-    Standard kernel ETW network sessions (TcpIpRecv/Send) work fine without them;
-    TraceEvent gracefully skips heap-profiling code paths when the DLLs are absent.
+    1. KernelTraceControl.dll + msdia140.dll  — shipped by the TraceEvent NuGet
+       package for heap-snapshot profiling (a feature Bansa never uses). Their
+       presence alongside a kernel ETW session triggers the "kernel-level network
+       sniffer" heuristic.  TraceEvent works fine without them.
+
+    2. Bansa.sys — LibreHardwareMonitor 0.9.x extracts a WinRing0-based kernel
+       driver at runtime, naming it "<ProcessName>.sys" so multiple monitoring
+       tools can coexist.  Because it is unsigned, Defender flags it as a severe
+       threat.  LHM's Computer.Close() deletes it on normal exit; this target
+       cleans up any copy left behind in the build / publish tree from developer
+       test runs.  The HardwareMonitor.Dispose() method also deletes it at
+       runtime as a safety net when the app closes.
+
+    These targets simply delete the files; they do NOT affect any functional
+    code paths — ETW network sessions and hardware sensor polling continue to
+    work correctly without them.
     ══════════════════════════════════════════════════════════════════════════════
   -->
   <Target Name="RemoveDefenderFlaggedDlls" AfterTargets="Build">
-    <Delete Files="$(OutputPath)amd64\KernelTraceControl.dll" />
-    <Delete Files="$(OutputPath)amd64\msdia140.dll" />
+    <Delete Files="$(OutputPath)amd64\KernelTraceControl.dll" ContinueOnError="true" />
+    <Delete Files="$(OutputPath)amd64\msdia140.dll"           ContinueOnError="true" />
+    <Delete Files="$(OutputPath)Bansa.sys"                    ContinueOnError="true" />
   </Target>
   <Target Name="RemoveDefenderFlaggedDllsPublish" AfterTargets="Publish">
-    <Delete Files="$(PublishDir)amd64\KernelTraceControl.dll" />
-    <Delete Files="$(PublishDir)amd64\msdia140.dll" />
+    <Delete Files="$(PublishDir)amd64\KernelTraceControl.dll" ContinueOnError="true" />
+    <Delete Files="$(PublishDir)amd64\msdia140.dll"           ContinueOnError="true" />
+    <Delete Files="$(PublishDir)Bansa.sys"                    ContinueOnError="true" />
   </Target>
 
 </Project>

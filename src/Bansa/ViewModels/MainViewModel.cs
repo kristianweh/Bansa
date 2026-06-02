@@ -21,13 +21,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // to NetworkMonitor so its 100 ms InnerTick can read raw byte counters directly.
     private readonly DownloadThrottler _downloadThrottler;
     private PingMonitor _ping;                                      // non-readonly: can be replaced when target changes
-    private readonly RateHistory _rateHistory = new(capacity: 60);
+    // 7 200 samples × 0.5 s = 1 hour of scrollable history in the main chart.
+    private const int kChartCapacity = 7200;
+    private readonly RateHistory _rateHistory = new(capacity: kChartCapacity);
 
     // Per-tick app snapshots, in lockstep with _rateHistory.
     // Each slot holds the top-5 active apps visible at that moment (or null if idle).
     // Includes ImagePath so the crosshair tooltip can show app icons.
     private readonly (string Name, string ImagePath, long DownBps, long UpBps)[]?[] _appAtTick
-        = new (string, string, long, long)[]?[60];
+        = new (string, string, long, long)[]?[kChartCapacity];
     private int _appAtTickHead;
     private int _appAtTickCount;
     private int _hourlyRefreshCounter;                              // throttle hourly DB queries
@@ -108,9 +110,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public IReadOnlyList<(string Name, string ImagePath, long DownBps, long UpBps)[]?> AppTickSnapshot()
     {
         var result = new List<(string, string, long, long)[]?>(_appAtTickCount);
-        int start = _appAtTickCount < 60 ? 0 : _appAtTickHead;
+        int start = _appAtTickCount < kChartCapacity ? 0 : _appAtTickHead;
         for (int i = 0; i < _appAtTickCount; i++)
-            result.Add(_appAtTick[(start + i) % 60]);
+            result.Add(_appAtTick[(start + i) % kChartCapacity]);
         return result;
     }
 
@@ -183,11 +185,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch { }
 
-            // Re-apply global upload cap if gaming mode is persisted as active
-            if (App.Settings.GamingModeActive && App.Settings.GlobalUploadCapKBs > 0)
+            // Re-apply global upload cap if it was active in the previous session
+            if (App.Settings.GlobalUploadCapKBs > 0)
             {
-                try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); }
-                catch { }
+                _downloadThrottler.SetGlobalUploadCap(App.Settings.GlobalUploadCapKBs);
+                if (App.Settings.GamingModeActive)
+                {
+                    try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); }
+                    catch { }
+                }
             }
         });
     }
@@ -458,8 +464,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 .Select(a => (a.Name, a.ImagePath, a.BytesInPerSec, a.BytesOutPerSec))
                 .ToArray();
             _appAtTick[_appAtTickHead] = topApps.Length > 0 ? topApps : null;
-            _appAtTickHead = (_appAtTickHead + 1) % 60;
-            if (_appAtTickCount < 60) _appAtTickCount++;
+            _appAtTickHead = (_appAtTickHead + 1) % kChartCapacity;
+            if (_appAtTickCount < kChartCapacity) _appAtTickCount++;
 
             // Refresh today's usage from the history DB every ~10 s (20 ticks × 500 ms)
             _todayRefreshCounter++;
@@ -580,6 +586,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             QosWarning = "";
         }
 
+        // Hard enforcement layer — pulsed firewall rules, catches existing connections and UDP
+        _downloadThrottler.SetGlobalUploadCap(GlobalUploadCapKBs);
+
+        // Soft cap layer — QoS Group Policy, zero CPU overhead once applied
         var o = await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
         StatusText = o.Success
             ? (GlobalUploadCapKBs > 0
@@ -610,7 +620,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // 1. Apply global upload cap if configured — prevents ADSL bufferbloat
             if (GlobalUploadCapKBs > 0)
+            {
+                _downloadThrottler.SetGlobalUploadCap(GlobalUploadCapKBs);
                 await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
+            }
 
             // 2. Mark selected game as DSCP 46 so router gives it priority over other traffic
             if (game != null && !string.IsNullOrEmpty(game.ImagePath))
@@ -641,7 +654,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             GamingModeTargetName = "";
             // Remove global cap when gaming mode goes off
             if (GlobalUploadCapKBs > 0)
+            {
+                _downloadThrottler.SetGlobalUploadCap(0);
                 await QosManager.SetGlobalUploadCapAsync(0);
+            }
 
             StatusText = "Gaming mode OFF — global upload cap removed.";
         }

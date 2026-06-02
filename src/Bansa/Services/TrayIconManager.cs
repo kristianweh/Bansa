@@ -24,8 +24,6 @@ public sealed class TrayIconManager : IDisposable
     private readonly Window _ownerWindow;
     private readonly TrayPopupWindow _popup;
     private readonly DispatcherTimer _cursorPoll;
-    private DispatcherTimer? _hoverTimer;        // delays popup appearance
-    private const int HoverDelayMs = 600;
     private IntPtr _currentIconHandle = IntPtr.Zero;
     private int _iconSize;
 
@@ -52,9 +50,9 @@ public sealed class TrayIconManager : IDisposable
         _ownerWindow = ownerWindow;
         _iconSize = ClampSize(App.Settings?.TrayIconSize ?? 96);
 
-        _tray = new WinForms.NotifyIcon { Visible = true };
-        _tray.MouseClick += OnTrayClick;
-        _tray.MouseMove  += OnTrayMouseMove;
+        _tray = new WinForms.NotifyIcon { Visible = App.Settings?.ShowTrayIcon != false };
+        _tray.MouseClick       += OnTrayClick;
+        _tray.MouseDoubleClick += OnTrayDoubleClick;
 
         _popup = new TrayPopupWindow();
 
@@ -101,6 +99,7 @@ public sealed class TrayIconManager : IDisposable
     private void OnSettingsChanged()
     {
         _iconSize = ClampSize(App.Settings.TrayIconSize);
+        _tray.Visible = App.Settings.ShowTrayIcon;
         UpdateIcon(_lastDown, _lastUp);
     }
 
@@ -108,44 +107,30 @@ public sealed class TrayIconManager : IDisposable
 
     private void OnTrayClick(object? sender, WinForms.MouseEventArgs e)
     {
-        if (e.Button == WinForms.MouseButtons.Left)
-            ShowMainWindow();
+        if (e.Button != WinForms.MouseButtons.Left) return;
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (_popup.IsVisible)
+                _popup.BeginFadeOut();
+            else
+                ShowPopup();
+        });
     }
 
-    private void OnTrayMouseMove(object? sender, WinForms.MouseEventArgs e)
+    private void OnTrayDoubleClick(object? sender, WinForms.MouseEventArgs e)
     {
-        if (_popup.IsVisible) { _popup.CancelHide(); return; }
-
-        // Don't stack timers — if one is already pending just let it fire
-        if (_hoverTimer != null) return;
-
-        // Delay the popup so it doesn't flash on accidental pass-overs.
-        // No cursor poll during the delay: the poll (started in ShowPopup) will
-        // dismiss the popup immediately if the cursor has already moved away.
-        _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HoverDelayMs) };
-        _hoverTimer.Tick += (_, _) =>
-        {
-            _hoverTimer?.Stop();
-            _hoverTimer = null;
-            ShowPopup();
-        };
-        _hoverTimer.Start();
+        if (e.Button == WinForms.MouseButtons.Left)
+            Application.Current.Dispatcher.Invoke(ShowMainWindow);
     }
 
     private void OnCursorPoll(object? sender, EventArgs e)
     {
+        // Poll only to dismiss popup when cursor leaves the popup window area
         if (!_popup.IsVisible) { _cursorPoll.Stop(); return; }
 
-        bool nearTray  = false;
         bool overPopup = false;
-
         if (GetCursorPos(out var p))
         {
-            // All comparisons in physical pixels via WinForms.Screen.
-            var screen = WinForms.Screen.FromPoint(new System.Drawing.Point(p.X, p.Y));
-            nearTray = p.Y >= screen.Bounds.Bottom - 80;
-
-            // Convert popup WPF DIP bounds to physical pixels for a correct hit-test.
             var src = System.Windows.Interop.HwndSource.FromHwnd(
                 new System.Windows.Interop.WindowInteropHelper(_popup).Handle);
             if (src?.CompositionTarget is { } ct)
@@ -157,10 +142,10 @@ public sealed class TrayIconManager : IDisposable
             }
         }
 
-        if (!nearTray && !overPopup)
-            _popup.BeginFadeOut();
-        else
-            _popup.CancelHide();
+        if (!overPopup)
+        {
+            _cursorPoll.Stop();
+        }
     }
 
     private void ShowPopup()
@@ -168,7 +153,10 @@ public sealed class TrayIconManager : IDisposable
         try
         {
             var wa = SystemParameters.WorkArea;
-            _popup.ShowAt(wa.Right - 8, wa.Bottom - 8);
+            // Use saved position if available, else default to bottom-right corner
+            double px = App.Settings?.TrayPopupX >= 0 ? App.Settings.TrayPopupX : wa.Right  - 8;
+            double py = App.Settings?.TrayPopupY >= 0 ? App.Settings.TrayPopupY : wa.Bottom - 8;
+            _popup.ShowAt(px, py);
             _popup.Update(_lastDown, _lastUp, _lastPing, _lastHistory, _lastApps);
             _cursorPoll.Start();
         }
@@ -328,7 +316,6 @@ public sealed class TrayIconManager : IDisposable
     public void Dispose()
     {
         try { SettingsManager.Changed -= OnSettingsChanged; } catch { }
-        try { _hoverTimer?.Stop(); _hoverTimer = null; } catch { }
         try { _cursorPoll.Stop(); } catch { }
         try { _tray.Visible = false; _tray.Dispose(); } catch { }
         try { _popup.Close(); } catch { }

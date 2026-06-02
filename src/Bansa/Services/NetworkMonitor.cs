@@ -468,6 +468,40 @@ public sealed class NetworkMonitor : IDisposable
         return imagePath;
     }
 
+    /// <summary>
+    /// Returns the sum of raw accumulated bytes sent across ALL tracked processes.
+    /// Used by the global upload-cap enforcer in DownloadThrottler to measure
+    /// system-wide upload in each 100 ms window without querying per-app.
+    /// </summary>
+    public long GetTotalRawBytesOut()
+    {
+        long total = 0;
+        foreach (var t in _tallies.Values)
+            total += Interlocked.Read(ref t.BytesOut);
+        return total;
+    }
+
+    /// <summary>
+    /// Returns a snapshot of (imagePath → rawBytesOut) for every distinct image path
+    /// currently tracked.  Paths with multiple PIDs (e.g. Chrome helpers) are summed.
+    /// Used by the global cap enforcer to discover which apps are actively uploading
+    /// so it can add or remove firewall block rules per-app rather than blanket-blocking.
+    /// </summary>
+    public Dictionary<string, long> GetRawBytesOutByPath()
+    {
+        var result = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in _tallies.Values)
+        {
+            if (string.IsNullOrEmpty(t.LastKnownPath)) continue;
+            long b = Interlocked.Read(ref t.BytesOut);
+            if (result.TryGetValue(t.LastKnownPath, out var prev))
+                result[t.LastKnownPath] = prev + b;
+            else
+                result[t.LastKnownPath] = b;
+        }
+        return result;
+    }
+
     public void Stop()
     {
         if (!IsRunning) return;

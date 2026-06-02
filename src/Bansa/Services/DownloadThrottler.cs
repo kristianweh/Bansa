@@ -40,10 +40,26 @@ public sealed class DownloadThrottler : IDisposable
 {
     public const string ThrottleRulePrefix   = "Bansa-Throttle-";
     public const string UpThrottleRulePrefix = "Bansa-UpThrottle-";
+    public const string GlobalCapRulePrefix  = "Bansa-GlobalCap-";
 
     private readonly NetworkMonitor _monitor;
     private readonly object _lock = new();
     private readonly Dictionary<string, ThrottleState> _byImagePath =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // ── Global upload cap state ───────────────────────────────────────────────
+    // Tracks total system-wide upload via token bucket (same 100 ms window as per-app).
+    // When the bucket goes negative, upload block rules are added to every app
+    // that had meaningful send activity in the current window.
+    private int      _globalUploadCapKBps;
+    private long     _globalLastBytesOut;
+    private long     _globalTokenBucket;
+    private DateTime _globalWindowStart = DateTime.MinValue;
+    // Per-path last-seen raw byte totals (for computing per-window deltas)
+    private readonly Dictionary<string, long> _globalPathLastBytes =
+        new(StringComparer.OrdinalIgnoreCase);
+    // Paths currently blocked by the global cap (value = true while rule is active)
+    private readonly Dictionary<string, bool> _globalCapBlocked =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly System.Threading.Timer _innerTimer;
@@ -142,6 +158,48 @@ public sealed class DownloadThrottler : IDisposable
     }
 
     /// <summary>
+    /// Sets (or removes) the system-wide upload cap enforced by this throttler.
+    /// This is a HARD cap backed by pulsed firewall block rules — it runs on top of
+    /// the QoS Group Policy soft cap and catches traffic that QoS misses:
+    ///   • Apps with existing socket connections (open before the QoS policy was applied)
+    ///   • UDP streams that the QoS Packet Scheduler doesn't schedule
+    ///   • Cases where RefreshPolicyEx hasn't propagated yet
+    /// kbps = 0 removes the cap and clears all global-cap firewall rules.
+    /// </summary>
+    public void SetGlobalUploadCap(int kbps)
+    {
+        List<string>? toUnblock = null;
+        lock (_lock)
+        {
+            _globalUploadCapKBps = kbps;
+            if (kbps <= 0)
+            {
+                // Collect any currently-active global-cap rules for removal
+                foreach (var (path, blocked) in _globalCapBlocked)
+                    if (blocked)
+                    {
+                        toUnblock ??= new List<string>();
+                        toUnblock.Add(path);
+                    }
+                _globalCapBlocked.Clear();
+                _globalPathLastBytes.Clear();
+                _globalTokenBucket = 0;
+            }
+            else
+            {
+                _globalLastBytesOut = _monitor.GetTotalRawBytesOut();
+                _globalWindowStart  = DateTime.MinValue;
+                _globalTokenBucket  = 0;
+                _globalPathLastBytes.Clear();
+            }
+        }
+
+        if (toUnblock != null)
+            foreach (var path in toUnblock)
+                _ = RemoveBlockAsync(MakeRuleName(GlobalCapRulePrefix, path));
+    }
+
+    /// <summary>
     /// Returns true when the inbound block rule for this app is currently ACTIVE
     /// (i.e. the download limit is set and the token bucket is in debt this window).
     /// Matches on the resolved <see cref="ThrottleState.ImagePath"/>, so it works even
@@ -192,8 +250,16 @@ public sealed class DownloadThrottler : IDisposable
         List<(string RuleName, string ExePath, int Dir, bool TurnOn)>? actions = null;
         var now = DateTime.UtcNow;
 
+        // Snapshot per-path byte totals outside the lock (NetworkMonitor is thread-safe).
+        // Needed for the global-cap section; computed once per tick even when cap is 0
+        // so the first window after enabling the cap has a valid baseline.
+        var pathSnapshot = _globalUploadCapKBps > 0
+            ? _monitor.GetRawBytesOutByPath()
+            : null;
+
         lock (_lock)
         {
+            // ── Per-app throttling ───────────────────────────────────────────
             foreach (var st in _byImagePath.Values)
             {
                 // ── Download (inbound) ───────────────────────────────────────
@@ -264,7 +330,76 @@ public sealed class DownloadThrottler : IDisposable
                     }
                 }
             }
-        }
+
+            // ── Global upload cap (hard enforcement layer) ───────────────────
+            // Runs after per-app limits so paths with explicit limits are skipped.
+            // The QoS Group Policy soft cap only catches new connections and misses UDP;
+            // this firewall-pulse approach enforces against ALL active uploaders.
+            if (_globalUploadCapKBps > 0 && pathSnapshot != null)
+            {
+                long globalLimitBytes = (long)_globalUploadCapKBps * 1024 / 10; // bytes per 100 ms window
+
+                if ((now - _globalWindowStart).TotalMilliseconds >= 100)
+                {
+                    long totalNow = 0;
+                    foreach (var b in pathSnapshot.Values) totalNow += b;
+                    long totalSent      = Math.Max(0, totalNow - _globalLastBytesOut);
+                    _globalLastBytesOut = totalNow;
+                    _globalWindowStart  = now;
+
+                    // Same carry-over-debt bucket as per-app; capped at one window of credit.
+                    _globalTokenBucket = Math.Min(
+                        _globalTokenBucket + globalLimitBytes - totalSent,
+                        globalLimitBytes);
+                }
+
+                bool wantGlobalBlock = _globalTokenBucket < 0;
+
+                // 1 KB threshold — ignore paths that sent nearly nothing this window
+                // to avoid toggling rules for idle background processes.
+                const long kActiveThreshold = 1024;
+
+                foreach (var (path, curBytes) in pathSnapshot)
+                {
+                    // Paths with explicit per-app limits are already managed above
+                    if (_byImagePath.ContainsKey(path)) continue;
+
+                    // Compute per-path delta to determine activity
+                    _globalPathLastBytes.TryGetValue(path, out long prevBytes);
+                    _globalPathLastBytes[path] = curBytes;
+                    long pathDelta = Math.Max(0, curBytes - prevBytes);
+
+                    bool wasBlocked = _globalCapBlocked.TryGetValue(path, out bool gbl) && gbl;
+
+                    if (wantGlobalBlock && pathDelta > kActiveThreshold && !wasBlocked)
+                    {
+                        string rn = MakeRuleName(GlobalCapRulePrefix, path);
+                        actions ??= new();
+                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, true));
+                        _globalCapBlocked[path] = true;
+                    }
+                    else if (!wantGlobalBlock && wasBlocked)
+                    {
+                        string rn = MakeRuleName(GlobalCapRulePrefix, path);
+                        actions ??= new();
+                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, false));
+                        _globalCapBlocked[path] = false;
+                    }
+                }
+
+                // Clean up rules for paths that are no longer uploading
+                foreach (var path in _globalCapBlocked.Keys.ToList())
+                {
+                    if (_globalCapBlocked[path] && !pathSnapshot.ContainsKey(path))
+                    {
+                        string rn = MakeRuleName(GlobalCapRulePrefix, path);
+                        actions ??= new();
+                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, false));
+                        _globalCapBlocked[path] = false;
+                    }
+                }
+            }
+        } // end lock
 
         if (actions == null) return;
         foreach (var (ruleName, exePath, dir, on) in actions)
@@ -349,8 +484,9 @@ public sealed class DownloadThrottler : IDisposable
                     // Broad match: any throttle/block rule that contains "Bansa",
                     // including rules created by older versions with different prefixes.
                     if (n.Contains("Bansa", StringComparison.OrdinalIgnoreCase) &&
-                        (n.Contains("Throttle", StringComparison.OrdinalIgnoreCase) ||
-                         n.Contains("Block",    StringComparison.OrdinalIgnoreCase)))
+                        (n.Contains("Throttle",  StringComparison.OrdinalIgnoreCase) ||
+                         n.Contains("GlobalCap", StringComparison.OrdinalIgnoreCase) ||
+                         n.Contains("Block",     StringComparison.OrdinalIgnoreCase)))
                         toRemove.Add(n);
                 }
                 foreach (var n in toRemove) TryRemoveFwRule(rules, n);

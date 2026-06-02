@@ -63,8 +63,8 @@ public partial class FloatingGraphWindow : Window
     private readonly Queue<int> _pingHistory = new();
     private const int PingHistoryLen = 10;
 
-    // ── Edge-snap guard ───────────────────────────────────────────────────────
-    private bool _suppressLocationChanged;
+    // ── Edge-snap guard (kept for future use; snap removed per user request) ──
+    // private bool _suppressLocationChanged;
 
     // ── Construction ──────────────────────────────────────────────────────────
     public FloatingGraphWindow()
@@ -81,6 +81,9 @@ public partial class FloatingGraphWindow : Window
         {
             Left = s.FloatGraphX;
             Top  = s.FloatGraphY;
+            // Clamp: the saved position might be off-screen on a different PC
+            // (fewer monitors, different DPI, different resolution).
+            EnsureOnScreen();
         }
         else
         {
@@ -111,12 +114,28 @@ public partial class FloatingGraphWindow : Window
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
+    // How many samples the floating graph displays (same 30 s window as pre-scroll-feature).
+    private const int FloatWindowSize = 60;
+
     public void UpdateChart(IReadOnlyList<(long Down, long Up)> history,
                             Color downColor, Color upColor,
                             int pingMs = -1,
                             IEnumerable<AppRowViewModel>? apps = null)
     {
-        _history   = history;
+        // Always show only the latest 60 samples (30 s) — the main chart may now carry
+        // up to 7 200 samples for its drag-scroll feature, but the float graph keeps its
+        // original fixed 30-second window.
+        if (history.Count > FloatWindowSize)
+        {
+            int start = history.Count - FloatWindowSize;
+            var buf = new (long Down, long Up)[FloatWindowSize];
+            for (int i = 0; i < FloatWindowSize; i++) buf[i] = history[start + i];
+            _history = buf;
+        }
+        else
+        {
+            _history = history;
+        }
 
         // Invalidate cached brushes only when user changes colors
         if (downColor != _cachedDownColor || upColor != _cachedUpColor)
@@ -531,8 +550,6 @@ public partial class FloatingGraphWindow : Window
 
     private void OnLocationChanged(object? sender, EventArgs e)
     {
-        if (_suppressLocationChanged) return;
-        SnapToEdges();
         PersistGeometry();
     }
 
@@ -649,27 +666,63 @@ public partial class FloatingGraphWindow : Window
 
         if (snapped)
         {
-            _suppressLocationChanged = true;
             Left = newPhysLeft / dpiX;
             Top  = newPhysTop  / dpiY;
-            _suppressLocationChanged = false;
         }
     }
 
     // ── Geometry persistence ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// After restoring a saved position, verify that at least the top-left drag area
+    /// (80×30 DIPs) falls somewhere on the current virtual desktop.
+    /// If the saved coords come from a different PC (fewer monitors, different DPI,
+    /// different resolution) the window can end up completely off-screen.
+    /// </summary>
+    private void EnsureOnScreen()
+    {
+        // SystemParameters.VirtualScreen* gives the bounding rect of all monitors
+        // combined, expressed in WPF device-independent pixels — same coordinate
+        // space as Left / Top, so no DPI conversion is needed.
+        double vLeft   = SystemParameters.VirtualScreenLeft;
+        double vTop    = SystemParameters.VirtualScreenTop;
+        double vRight  = vLeft + SystemParameters.VirtualScreenWidth;
+        double vBottom = vTop  + SystemParameters.VirtualScreenHeight;
+
+        // The check requires an 80×30 DIP "grab strip" at the top-left to be on-screen
+        // so the user can always reach the title bar to drag the window back.
+        bool onScreen = Left + 80 > vLeft && Left  < vRight &&
+                        Top  + 30 > vTop  && Top   < vBottom;
+
+        if (!onScreen)
+        {
+            var wa = SystemParameters.WorkArea;
+            Left = wa.Right - Width  - 16;
+            Top  = wa.Top   + 16;
+        }
+    }
+
     private void PersistGeometry()
     {
         if (App.Settings is null) return;
-        App.Settings.FloatGraphX = Left;
-        App.Settings.FloatGraphY = Top;
-        App.Settings.FloatGraphW = Width;
-        App.Settings.FloatGraphH = Height;
+
+        // WPF returns NaN for Left / Top / Width / Height after the HWND has been
+        // released — typically when Closed fires.  If we blindly write NaN the next
+        // restore reads an invalid value and falls back to the default position.
+        // Skip the assignment when NaN so the last valid value (written by the most
+        // recent LocationChanged / SizeChanged call) is preserved in App.Settings.
+        if (!double.IsNaN(Left))   App.Settings.FloatGraphX = Left;
+        if (!double.IsNaN(Top))    App.Settings.FloatGraphY = Top;
+        if (!double.IsNaN(Width))  App.Settings.FloatGraphW = Width;
+        if (!double.IsNaN(Height)) App.Settings.FloatGraphH = Height;
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
         PersistGeometry();
+        // Persist the geometry explicitly here — do not rely on the
+        // Vm.ShowFloatingGraph = false side-effect as the only save path.
+        SettingsManager.Save(App.Settings);
         // ShowFloatingGraph / ShowHardwarePanel persistence is managed by MainWindow.
     }
 

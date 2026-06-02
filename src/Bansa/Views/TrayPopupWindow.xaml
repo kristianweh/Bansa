@@ -51,7 +51,8 @@
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
             CornerRadius="14"
-            Padding="16">
+            Padding="16"
+            MouseLeftButtonDown="OnPopupDrag">
         <Border.Effect>
             <DropShadowEffect BlurRadius="28" Direction="270" ShadowDepth="4" Opacity="0.50" Color="Black" />
         </Border.Effect>

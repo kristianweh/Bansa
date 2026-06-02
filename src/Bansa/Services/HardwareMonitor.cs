@@ -406,5 +406,22 @@ public sealed class HardwareMonitor : IDisposable
         _disposed = true;
         _timer?.Dispose();
         try { _computer?.Close(); } catch { }
+
+        // LHM 0.9.x extracts a kernel driver named "<ProcessName>.sys" to the app
+        // directory and registers it as a Windows service so it can read hardware
+        // sensors via MSR / SMBus.  Computer.Close() normally unregisters and deletes
+        // the file, but if it crashes or the file handle lingers, Defender may flag it.
+        // This safety-net delete ensures the file doesn't persist between sessions.
+        try
+        {
+            string appDir = System.IO.Path.GetDirectoryName(
+                System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName)
+                ?? AppContext.BaseDirectory;
+            string driverFile = System.IO.Path.Combine(appDir,
+                System.Diagnostics.Process.GetCurrentProcess().ProcessName + ".sys");
+            if (System.IO.File.Exists(driverFile))
+                System.IO.File.Delete(driverFile);
+        }
+        catch { /* non-critical; file may still be locked by the OS */ }
     }
 }

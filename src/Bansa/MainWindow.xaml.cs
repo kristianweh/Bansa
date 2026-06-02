@@ -54,6 +54,13 @@ public partial class MainWindow : Window
     // Chart pause state
     private bool _chartPaused;
 
+    // Chart scroll / drag state
+    private int    _chartScrollOffset;         // 0 = live; > 0 = scrolled back in time (samples)
+    private bool   _chartDragging;
+    private double _chartDragStartX;
+    private int    _chartDragStartOffset;
+    private const int kChartWindow = 60;       // visible samples (30 s at 0.5 s/sample)
+
     // ── Temperature / usage ring buffers for hardware card sparklines ─────────
     // 60 samples × ~2 s per sample ≈ 2 minutes of history.
     // Ring buffer: _tempBufHead points to the NEXT write slot (oldest data is at head).
@@ -349,6 +356,12 @@ public partial class MainWindow : Window
         }
         PopulatePingTargetCombo();
 
+        // Restore main window bounds
+        RestoreWindowBounds();
+
+        // Restore Network tab chart height
+        RestoreChartHeight();
+
         // Restore sort column + direction and column widths/visibility
         RestoreAppGridSort();
         RestoreAppGridColumns();
@@ -407,6 +420,9 @@ public partial class MainWindow : Window
         // Persist column layout before final settings write
         SaveAppGridColumns();
 
+        // Save main window bounds
+        SaveWindowBounds();
+
         // Save ShowFloatingGraph LAST so it wins over any value written by FloatingGraphWindow.Closed
         App.Settings.ShowFloatingGraph = floatWasOpen;
         SettingsManager.Save(App.Settings);
@@ -420,7 +436,62 @@ public partial class MainWindow : Window
             DragMove();
     }
 
+    private void RestoreWindowBounds()
+    {
+        var s = App.Settings;
+        if (s.MainWindowW > 0 && s.MainWindowH > 0)
+        {
+            Width  = s.MainWindowW;
+            Height = s.MainWindowH;
+        }
+        if (s.MainWindowX >= 0 && s.MainWindowY >= 0)
+        {
+            // Clamp to visible screen area
+            var screen = System.Windows.SystemParameters.WorkArea;
+            Left = Math.Max(screen.Left, Math.Min(s.MainWindowX, screen.Right  - Width));
+            Top  = Math.Max(screen.Top,  Math.Min(s.MainWindowY, screen.Bottom - Height));
+        }
+        if (s.MainWindowMaximized)
+            WindowState = WindowState.Maximized;
+    }
+
+    private void SaveWindowBounds()
+    {
+        // Only save Normal state bounds (don't overwrite with maximized coords)
+        if (WindowState == WindowState.Normal)
+        {
+            App.Settings.MainWindowX = Left;
+            App.Settings.MainWindowY = Top;
+            App.Settings.MainWindowW = Width;
+            App.Settings.MainWindowH = Height;
+        }
+        App.Settings.MainWindowMaximized = WindowState == WindowState.Maximized;
+    }
+
+    // ── Network tab chart height persistence ─────────────────────────────────
+
+    private void RestoreChartHeight()
+    {
+        double h = App.Settings.NetworkChartHeight;
+        if (h >= 60 && h <= 600)
+            ProcPanel.RowDefinitions[2].Height = new GridLength(h);
+    }
+
+    private void OnChartSplitterDragCompleted(object sender,
+        System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        double h = ProcPanel.RowDefinitions[2].ActualHeight;
+        if (h >= 60)
+        {
+            App.Settings.NetworkChartHeight = h;
+            SettingsManager.Save(App.Settings);
+        }
+    }
+
     // ────────── Main window graph ──────────
+
+    // Indices of the currently-visible window into _chartHistory (for crosshair mapping).
+    private int _chartWinStart, _chartWinEnd;
 
     private void DrawMainChart(IReadOnlyList<(long Down, long Up)> history)
     {
@@ -431,6 +502,32 @@ public partial class MainWindow : Window
         double w = MainChartCanvas.ActualWidth;
         double h = MainChartCanvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
+
+        // ── Compute visible scroll window ─────────────────────────────────────────
+        int fullCount = history.Count;
+        int scrollOff = Math.Clamp(_chartScrollOffset, 0, Math.Max(0, fullCount - kChartWindow));
+        _chartScrollOffset = scrollOff; // clamp in-place
+        _chartWinEnd   = fullCount - scrollOff;
+        _chartWinStart = Math.Max(0, _chartWinEnd - kChartWindow);
+
+        // Extract the window as a list so the rest of the method is unchanged
+        var visibleHistory = new List<(long Down, long Up)>(_chartWinEnd - _chartWinStart);
+        for (int i = _chartWinStart; i < _chartWinEnd; i++)
+            visibleHistory.Add(history[i]);
+
+        // Update window label
+        if (scrollOff == 0)
+            ChartWindowLabel.Text = "30 s";
+        else
+        {
+            double secAgo = scrollOff * 0.5;
+            ChartWindowLabel.Text = secAgo < 60
+                ? $"−{secAgo:0}s"
+                : $"−{(int)(secAgo / 60)}m{(int)(secAgo % 60):00}s";
+        }
+
+        // Use windowed history from here on
+        history = visibleHistory;
 
         // Shared or independent peaks depending on dual-scale toggle
         _chartPeakDown = 1; _chartPeakUp = 1;
@@ -562,9 +659,33 @@ public partial class MainWindow : Window
         if (w <= 0 || h <= 0 || _chartHistory.Count < 2) return;
 
         var pos = e.GetPosition(ChartOverlay);
-        int n   = _chartHistory.Count;
-        int idx = (int)Math.Round(pos.X / w * (n - 1));
-        idx = Math.Max(0, Math.Min(n - 1, idx));
+
+        // Handle drag-scroll
+        if (e.LeftButton == MouseButtonState.Pressed && !_chartDragging
+            && Math.Abs(pos.X - _chartDragStartX) > 4)
+        {
+            _chartDragging = true; // latch drag once we see meaningful movement
+        }
+        if (_chartDragging && e.LeftButton == MouseButtonState.Pressed)
+        {
+            ChartOverlay.Cursor = System.Windows.Input.Cursors.Hand;
+            double dx = pos.X - _chartDragStartX;   // drag right = scroll back in time
+            int winSize = Math.Max(1, _chartWinEnd - _chartWinStart);
+            double samplesPerPx = Math.Max(1.0, (double)Math.Max(0, _chartHistory.Count - kChartWindow) / w);
+            _chartScrollOffset = Math.Clamp(
+                _chartDragStartOffset + (int)(dx * samplesPerPx),
+                0, Math.Max(0, _chartHistory.Count - kChartWindow));
+            DrawMainChart(_chartHistory);
+            return;
+        }
+
+        // Crosshair: map mouse X → index within the visible window → full history index
+        int winLen = _chartWinEnd - _chartWinStart;
+        if (winLen < 2) return;
+        int winIdx = (int)Math.Round(pos.X / w * (winLen - 1));
+        winIdx = Math.Max(0, Math.Min(winLen - 1, winIdx));
+        int idx    = _chartWinStart + winIdx;   // absolute index in _chartHistory
+        int n      = _chartHistory.Count;
 
         // ── Ensure crosshair line exists ─────────────────────────────────────
         if (_crosshairLine is null)
@@ -602,7 +723,9 @@ public partial class MainWindow : Window
             _lastCrosshairIdx = idx;
             var (down, up) = _chartHistory[idx];
             double secsAgo = (n - 1 - idx) * 0.5;
-            string timeStr = secsAgo < 0.25 ? "now" : $"-{secsAgo:0.#}s";
+            string timeStr = secsAgo < 0.25 ? "now" : secsAgo < 60
+                ? $"-{secsAgo:0.#}s"
+                : $"-{(int)(secsAgo/60)}m{(int)(secsAgo%60):00}s";
 
             var panel = new StackPanel { Margin = new Thickness(10, 8, 10, 8) };
 
@@ -623,7 +746,7 @@ public partial class MainWindow : Window
             header.Children.Add(new TextBlock { Text = $"  {timeStr}", Foreground = dimBrush, FontSize = 10 });
             panel.Children.Add(header);
 
-            // ── Per-app rows ─────────────────────────────────────────────────
+            // ── Per-app rows (idx is the absolute _appHistory index) ─────────
             if (idx < _appHistory.Count && _appHistory[idx] is { Length: > 0 } apps)
             {
                 panel.Children.Add(new Border
@@ -758,25 +881,105 @@ public partial class MainWindow : Window
     private void OnChartMouseLeave(object sender, MouseEventArgs e)
     {
         ChartOverlay.Children.Clear();
+        ChartOverlay.Cursor = null;
         _crosshairLine    = null;
         _crosshairPanel   = null;
         _lastCrosshairIdx = -1;
+        _chartDragging    = false;
     }
 
     // ── Preset / dual-scale / clear filter handlers ────────────────────────────
 
     private void OnPresetAll(object sender, RoutedEventArgs e)  => Vm.HideBelowKBps = 0;
+    private void OnPreset1(object sender, RoutedEventArgs e)    => Vm.HideBelowKBps = 1;
     private void OnPreset10(object sender, RoutedEventArgs e)   => Vm.HideBelowKBps = 10;
     private void OnPreset50(object sender, RoutedEventArgs e)   => Vm.HideBelowKBps = 50;
     private void OnClearFilter(object sender, RoutedEventArgs e) => Vm.FilterText = "";
 
-    // ── Chart pause on click ────────────────────────────────────────────────────
-
-    private void OnChartClick(object sender, MouseButtonEventArgs e)
+    private void OnAppContextMenuOpened(object sender, RoutedEventArgs e)
     {
-        _chartPaused = !_chartPaused;
-        PauseBanner.Visibility = _chartPaused ? Visibility.Visible : Visibility.Collapsed;
-        if (!_chartPaused) DrawMainChart(_chartHistory); // immediate redraw when resuming
+        if (sender is not System.Windows.Controls.ContextMenu menu) return;
+        // Find the Quick profile item by Tag — avoids ContextMenu namescope issues
+        var quickProfileItem = menu.Items.OfType<System.Windows.Controls.MenuItem>()
+            .FirstOrDefault(mi => mi.Tag?.ToString() == "QuickProfile");
+        BuildProfileSubmenu(quickProfileItem);
+    }
+
+    private void BuildProfileSubmenu(System.Windows.Controls.MenuItem? item)
+    {
+        if (item is null) return;
+
+        // Always clear (removes both real items and the XAML placeholder)
+        item.Items.Clear();
+
+        var profiles = App.Settings.LimitProfiles;
+
+        if (profiles.Count == 0)
+        {
+            item.Visibility = Visibility.Collapsed;
+            // Restore a collapsed placeholder so the submenu popup template stays alive
+            item.Items.Add(new System.Windows.Controls.MenuItem { Visibility = Visibility.Collapsed });
+            return;
+        }
+
+        item.Visibility = Visibility.Visible;
+        foreach (var p in profiles)
+        {
+            var mi = new System.Windows.Controls.MenuItem
+            {
+                Header = $"{p.Name}  ↑{p.UploadKbps} ↓{p.DownloadKbps} KB/s"
+            };
+            var profile = p; // capture loop variable
+            mi.Click += (_, _) =>
+            {
+                if (Selected is not null)
+                    _ = Vm.ApplyLimitsCommand.ExecuteAsync((Selected, profile.UploadKbps, profile.DownloadKbps));
+            };
+            item.Items.Add(mi);
+        }
+    }
+
+    // ── Chart mouse down / up — drag-scroll + click-to-pause ────────────────────
+
+    private void OnChartMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _chartDragging      = false;
+        _chartDragStartX    = e.GetPosition(ChartOverlay).X;
+        _chartDragStartOffset = _chartScrollOffset;
+        ChartOverlay.CaptureMouse();
+    }
+
+    private void OnChartMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        ChartOverlay.ReleaseMouseCapture();
+        ChartOverlay.Cursor = null; // restore default
+        bool wasDragging = _chartDragging;
+        _chartDragging = false;
+
+        if (!wasDragging)
+        {
+            // Treat as a click: toggle pause / snap to live
+            if (_chartScrollOffset > 0)
+            {
+                // Snap back to live
+                _chartScrollOffset = 0;
+                _chartPaused = false;
+                PauseBanner.Visibility = Visibility.Collapsed;
+                DrawMainChart(_chartHistory);
+            }
+            else
+            {
+                _chartPaused = !_chartPaused;
+                PauseBanner.Visibility = _chartPaused ? Visibility.Visible : Visibility.Collapsed;
+                if (!_chartPaused) DrawMainChart(_chartHistory);
+            }
+        }
+        else if (_chartScrollOffset == 0)
+        {
+            // Dragged back to live — resume
+            _chartPaused = false;
+            PauseBanner.Visibility = Visibility.Collapsed;
+        }
     }
 
     // ── Clear hotkey ──────────────────────────────────────────────────────────
@@ -1088,6 +1291,23 @@ public partial class MainWindow : Window
         ProfileUpBox.Text    = "0";
         ProfileDownBox.Text  = "0";
         RefreshProfilesList();
+    }
+
+    private void OnEditProfileClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not Services.LimitProfile profile) return;
+        var dlg = new Views.EditProfileDialog(profile.Name, profile.UploadKbps, profile.DownloadKbps)
+        {
+            Owner = this
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            profile.Name         = dlg.ProfileName;
+            profile.UploadKbps   = dlg.UploadKbps;
+            profile.DownloadKbps = dlg.DownloadKbps;
+            SettingsManager.Save(App.Settings);
+            RefreshProfilesList();
+        }
     }
 
     private void OnRemoveProfile(object sender, RoutedEventArgs e)
@@ -1985,6 +2205,7 @@ public partial class MainWindow : Window
     {
         MinimizeOnCloseToggle.IsChecked  = App.Settings.MinimizeOnClose;
         StartMinimizedToggle.IsChecked   = App.Settings.StartMinimizedToTray;
+        ShowTrayIconToggle.IsChecked     = App.Settings.ShowTrayIcon;
     }
 
     private void OnMinimizeOnCloseToggleClick(object sender, RoutedEventArgs e)
@@ -1996,6 +2217,12 @@ public partial class MainWindow : Window
     private void OnStartMinimizedToggleClick(object sender, RoutedEventArgs e)
     {
         App.Settings.StartMinimizedToTray = StartMinimizedToggle.IsChecked == true;
+        SettingsManager.Save(App.Settings);
+    }
+
+    private void OnShowTrayIconToggleClick(object sender, RoutedEventArgs e)
+    {
+        App.Settings.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
         SettingsManager.Save(App.Settings);
     }
 
