@@ -42,6 +42,20 @@ public sealed class DownloadThrottler : IDisposable
     public const string UpThrottleRulePrefix = "Bansa-UpThrottle-";
     public const string GlobalCapRulePrefix  = "Bansa-GlobalCap-";
 
+    // ── Block oscillation prevention ──────────────────────────────────────────
+    // Without hysteresis the token bucket oscillates around 0 for apps running near
+    // their limit: block 100 ms → unblock 100 ms → repeat.  That 50 % duty-cycle
+    // causes MORE packet loss than having no limit at all.
+    //
+    // Fix: two-pronged hysteresis.
+    //   1. Only start a block when debt exceeds 1/BlockDebtDivisor of the window
+    //      budget (tiny overages are absorbed without dropping packets).
+    //   2. Once blocked, hold the rule on for at least BlockHoldTicks × 100 ms.
+    //      During that window TCP detects loss and reduces its congestion window,
+    //      so the app doesn't immediately re-flood the moment we unblock.
+    private const int BlockHoldTicks   = 3;  // ≥ 300 ms minimum block duration
+    private const int BlockDebtDivisor = 4;  // block starts when debt > 25 % of window budget
+
     private readonly NetworkMonitor _monitor;
     private readonly object _lock = new();
     private readonly Dictionary<string, ThrottleState> _byImagePath =
@@ -79,14 +93,16 @@ public sealed class DownloadThrottler : IDisposable
         public long     DownTokenBucket;
         public DateTime DownWindowStart = DateTime.MinValue;
         public bool     CurrentlyBlockingDown;
-        public int      DownIdleWindows;   // consecutive 100 ms windows with zero received bytes
+        public int      DownBlockHoldTicks;  // remaining ticks to hold the block before considering unblock
+        public int      DownIdleWindows;     // consecutive 100 ms windows with zero received bytes
 
         // Upload (outbound block)
         public long     LastWindowRawBytesOut;
         public long     UpTokenBucket;
         public DateTime UpWindowStart = DateTime.MinValue;
         public bool     CurrentlyBlockingUp;
-        public int      UpIdleWindows;     // consecutive 100 ms windows with zero sent bytes
+        public int      UpBlockHoldTicks;    // remaining ticks to hold the block before considering unblock
+        public int      UpIdleWindows;       // consecutive 100 ms windows with zero sent bytes
     }
 
     public DownloadThrottler(NetworkMonitor monitor)
@@ -290,12 +306,27 @@ public sealed class DownloadThrottler : IDisposable
                         st.DownTokenBucket = Math.Min(st.DownTokenBucket + limitBytes - received, limitBytes);
                     }
 
-                    bool wantBlock = st.DownTokenBucket < 0;
-                    if (wantBlock != st.CurrentlyBlockingDown)
+                    // Hysteresis: only start a block when meaningfully over budget;
+                    // hold it for BlockHoldTicks windows so TCP has time to back off.
+                    if (!st.CurrentlyBlockingDown)
                     {
-                        actions ??= new();
-                        actions.Add((st.DownRuleName, st.ImagePath, NET_FW_RULE_DIR_IN, wantBlock));
-                        st.CurrentlyBlockingDown = wantBlock;
+                        if (st.DownTokenBucket < -(limitBytes / BlockDebtDivisor))
+                        {
+                            st.CurrentlyBlockingDown = true;
+                            st.DownBlockHoldTicks    = BlockHoldTicks;
+                            actions ??= new();
+                            actions.Add((st.DownRuleName, st.ImagePath, NET_FW_RULE_DIR_IN, true));
+                        }
+                    }
+                    else
+                    {
+                        if (st.DownBlockHoldTicks > 0) st.DownBlockHoldTicks--;
+                        if (st.DownBlockHoldTicks == 0 && st.DownTokenBucket >= 0)
+                        {
+                            st.CurrentlyBlockingDown = false;
+                            actions ??= new();
+                            actions.Add((st.DownRuleName, st.ImagePath, NET_FW_RULE_DIR_IN, false));
+                        }
                     }
                 }
 
@@ -321,12 +352,26 @@ public sealed class DownloadThrottler : IDisposable
                         st.UpTokenBucket = Math.Min(st.UpTokenBucket + limitBytes - sent, limitBytes);
                     }
 
-                    bool wantBlock = st.UpTokenBucket < 0;
-                    if (wantBlock != st.CurrentlyBlockingUp)
+                    // Same hysteresis as download.
+                    if (!st.CurrentlyBlockingUp)
                     {
-                        actions ??= new();
-                        actions.Add((st.UpRuleName, st.ImagePath, NET_FW_RULE_DIR_OUT, wantBlock));
-                        st.CurrentlyBlockingUp = wantBlock;
+                        if (st.UpTokenBucket < -(limitBytes / BlockDebtDivisor))
+                        {
+                            st.CurrentlyBlockingUp = true;
+                            st.UpBlockHoldTicks    = BlockHoldTicks;
+                            actions ??= new();
+                            actions.Add((st.UpRuleName, st.ImagePath, NET_FW_RULE_DIR_OUT, true));
+                        }
+                    }
+                    else
+                    {
+                        if (st.UpBlockHoldTicks > 0) st.UpBlockHoldTicks--;
+                        if (st.UpBlockHoldTicks == 0 && st.UpTokenBucket >= 0)
+                        {
+                            st.CurrentlyBlockingUp = false;
+                            actions ??= new();
+                            actions.Add((st.UpRuleName, st.ImagePath, NET_FW_RULE_DIR_OUT, false));
+                        }
                     }
                 }
             }
