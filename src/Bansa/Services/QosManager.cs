@@ -106,34 +106,6 @@ public static class QosManager
             }
         });
 
-    public static Task<Outcome> SetDscpAsync(string exePath, int dscpValue)
-        => Task.Run(() =>
-        {
-            if (string.IsNullOrWhiteSpace(exePath))
-                return new Outcome { Success = false, Detail = "No executable path." };
-            try
-            {
-                string policyName = MakePolicyName(exePath, "dscp");
-                string appName    = Path.GetFileName(exePath);
-
-                DeletePolicy(policyName);
-                if (dscpValue <= 0)
-                {
-                    FlushQosPolicy();
-                    return new Outcome { Success = true };
-                }
-                if (dscpValue > 63) dscpValue = 63;
-
-                WritePolicy(policyName, appName, throttleBps: 0, dscp: dscpValue);
-                FlushQosPolicy();
-                return new Outcome { Success = true };
-            }
-            catch (Exception ex)
-            {
-                return new Outcome { Success = false, Detail = ex.Message };
-            }
-        });
-
     public static Task<bool> RemovePolicyAsync(string policyName)
         => Task.Run(() =>
         {

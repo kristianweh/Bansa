@@ -1222,8 +1222,9 @@ public partial class MainWindow : Window
         SettingsTabGeneral.Visibility    = tag == "general"    ? Visibility.Visible : Visibility.Collapsed;
         SettingsTabNetwork.Visibility    = tag == "network"    ? Visibility.Visible : Visibility.Collapsed;
         SettingsTabAppearance.Visibility = tag == "appearance" ? Visibility.Visible : Visibility.Collapsed;
-        if (tag == "network")
-            RefreshConnectionSpeedUI();
+        SettingsTabGamingMode.Visibility = tag == "gamingmode" ? Visibility.Visible : Visibility.Collapsed;
+        if (tag == "network")    RefreshConnectionSpeedUI();
+        if (tag == "gamingmode") RefreshGamingModeUI();
     }
 
     // ── Connection speed ──────────────────────────────────────────────────────
@@ -2085,10 +2086,6 @@ public partial class MainWindow : Window
         if (Selected is not null)
             _ = Vm.ApplyLimitsCommand.ExecuteAsync((Selected, 0, 0));
     }
-    private void OnMarkGameClick(object sender, RoutedEventArgs e)
-    { if (Selected is not null) _ = Vm.MarkAsGameCommand.ExecuteAsync(Selected); }
-    private void OnUnmarkGameClick(object sender, RoutedEventArgs e)
-    { if (Selected is not null) _ = Vm.UnmarkGameCommand.ExecuteAsync(Selected); }
     private void OnShowPidsClick(object sender, RoutedEventArgs e) => ShowPidsFor(Selected);
     private void OnAppDoubleClick(object sender, MouseButtonEventArgs e) => ShowAppDetail(Selected);
 
@@ -2174,10 +2171,217 @@ public partial class MainWindow : Window
 
     // ────────── Gaming Mode ──────────
 
-    // The command is already bound; this Click handler runs AFTER the command so
-    // the button tooltip / ToolTip is updated without extra VM wiring.
     private void OnGamingModeBtnClick(object sender, RoutedEventArgs e)
         => _ = Vm.ToggleGamingModeCommand.ExecuteAsync(null);
+
+    // ── Gaming Mode profile editor (Settings tab) ──────────────────────────────
+
+    // Exposed for DataTemplate bindings via RelativeSource AncestorType=Window
+    public IReadOnlyList<LimitProfile> AvailableLimitProfiles => App.Settings.LimitProfiles;
+
+    private class GamingModeProfileRow
+    {
+        public string ExePath    { get; set; } = "";
+        public string AppName    { get; set; } = "";
+        public string UploadKBs  { get; set; } = "0";
+        public string DownloadKBs{ get; set; } = "0";
+    }
+
+    private class AppSearchEntry
+    {
+        public string Name      { get; set; } = "";
+        public string ImagePath { get; set; } = "";
+    }
+
+    private List<AppSearchEntry> _allGamingModeApps = new();
+    private AppSearchEntry? _selectedGamingModeApp;
+    private bool _suppressSearchUpdate;
+
+    private async void RefreshGamingModeUI()
+    {
+        // Snapshot UI-thread collections before the background task
+        var networkApps = Vm.Apps
+            .Where(a => !string.IsNullOrEmpty(a.ImagePath))
+            .Select(a => (name: System.IO.Path.GetFileNameWithoutExtension(a.ImagePath), path: a.ImagePath))
+            .ToList();
+        var profileApps = App.Settings.GamingModeProfiles
+            .Select(kv => (
+                name: !string.IsNullOrEmpty(kv.Value.AppName)
+                    ? kv.Value.AppName
+                    : System.IO.Path.GetFileNameWithoutExtension(kv.Key),
+                path: kv.Key))
+            .ToList();
+        var limitApps = App.Settings.AppUploadLimitsKBs.Keys
+            .Concat(App.Settings.AppDownloadLimitsKBs.Keys)
+            .Select(p => (name: System.IO.Path.GetFileNameWithoutExtension(p), path: p))
+            .ToList();
+
+        // Reset search UI immediately
+        _suppressSearchUpdate = true;
+        GamingModeSearchBox.Text = "";
+        _suppressSearchUpdate = false;
+        GamingModeClearBtn.Visibility = Visibility.Collapsed;
+        _selectedGamingModeApp = null;
+        GamingModeSearchPopup.IsOpen = false;
+
+        // Enumerate ALL running processes in background (MainModule.FileName can be slow)
+        _allGamingModeApps = await Task.Run(() =>
+        {
+            var dict = new Dictionary<string, AppSearchEntry>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var proc in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    var path = proc.MainModule?.FileName;
+                    if (string.IsNullOrEmpty(path)) continue;
+                    var name = System.IO.Path.GetFileNameWithoutExtension(path);
+                    if (string.IsNullOrEmpty(name)) continue;
+                    dict.TryAdd(name, new AppSearchEntry { Name = name, ImagePath = path });
+                }
+                catch { }
+                finally { proc.Dispose(); }
+            }
+
+            // Merge apps from network monitor, profiles and per-app limits
+            foreach (var (name, path) in networkApps.Concat(profileApps).Concat(limitApps))
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(path))
+                    dict.TryAdd(name, new AppSearchEntry { Name = name, ImagePath = path });
+
+            return dict.Values
+                .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        });
+
+        RefreshGamingModeProfilesList();
+    }
+
+    private void OnGamingModeSearchGotFocus(object sender, RoutedEventArgs e)
+    {
+        GamingModeResultsList.ItemsSource = _allGamingModeApps;
+        if (_allGamingModeApps.Count > 0)
+            GamingModeSearchPopup.IsOpen = true;
+    }
+
+    private void OnGamingModeSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressSearchUpdate) return;
+        var text = GamingModeSearchBox.Text ?? "";
+        GamingModeClearBtn.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var filtered = string.IsNullOrWhiteSpace(text)
+            ? _allGamingModeApps
+            : _allGamingModeApps.Where(a => a.Name.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        GamingModeResultsList.ItemsSource = filtered;
+        GamingModeSearchPopup.IsOpen = filtered.Count > 0;
+    }
+
+    private void OnGamingModeResultSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (GamingModeResultsList.SelectedItem is not AppSearchEntry app) return;
+        _selectedGamingModeApp = app;
+        _suppressSearchUpdate = true;
+        GamingModeSearchBox.Text = app.Name;
+        _suppressSearchUpdate = false;
+        GamingModeResultsList.SelectedIndex = -1;
+        GamingModeSearchPopup.IsOpen = false;
+    }
+
+    private void OnGamingModeSearchClear(object sender, RoutedEventArgs e)
+    {
+        _suppressSearchUpdate = true;
+        GamingModeSearchBox.Text = "";
+        _suppressSearchUpdate = false;
+        _selectedGamingModeApp = null;
+        GamingModeClearBtn.Visibility = Visibility.Collapsed;
+        GamingModeResultsList.ItemsSource = _allGamingModeApps;
+        GamingModeSearchPopup.IsOpen = _allGamingModeApps.Count > 0;
+        GamingModeSearchBox.Focus();
+    }
+
+    private void RefreshGamingModeProfilesList()
+    {
+        var profiles = App.Settings.GamingModeProfiles;
+        var rows = profiles.Select(kv => new GamingModeProfileRow
+        {
+            ExePath     = kv.Key,
+            AppName     = string.IsNullOrEmpty(kv.Value.AppName)
+                            ? System.IO.Path.GetFileNameWithoutExtension(kv.Key)
+                            : kv.Value.AppName,
+            UploadKBs   = kv.Value.UploadKBs.ToString(),
+            DownloadKBs = kv.Value.DownloadKBs.ToString(),
+        }).ToList();
+        GamingModeProfilesControl.ItemsSource = rows;
+        GamingModeEmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnGamingModeQuickProfileSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ComboBox combo) return;
+        if (combo.SelectedItem is not LimitProfile profile) return;
+        if (combo.Tag is not string path) return;
+        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        entry.UploadKBs   = profile.UploadKbps;
+        entry.DownloadKBs = profile.DownloadKbps;
+        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        SettingsManager.Save(App.Settings);
+        RefreshGamingModeProfilesList();
+    }
+
+    private void OnAddGamingModeApp(object sender, RoutedEventArgs e)
+    {
+        // Use item selected from popup; fall back to exact name match if the user typed one in
+        AppSearchEntry? selected = _selectedGamingModeApp
+            ?? _allGamingModeApps.FirstOrDefault(a =>
+                   a.Name.Equals(GamingModeSearchBox.Text?.Trim() ?? "", StringComparison.OrdinalIgnoreCase));
+        if (selected == null || string.IsNullOrEmpty(selected.ImagePath)) return;
+
+        var key = selected.ImagePath.ToLowerInvariant();
+        if (!App.Settings.GamingModeProfiles.ContainsKey(key))
+        {
+            App.Settings.GamingModeProfiles[key] = new GamingModeEntry
+            {
+                AppName     = selected.Name,
+                UploadKBs   = 0,
+                DownloadKBs = 0,
+            };
+            SettingsManager.Save(App.Settings);
+        }
+
+        GamingModeSearchBox.Text = "";
+        _selectedGamingModeApp = null;
+        RefreshGamingModeProfilesList();
+    }
+
+    private void OnRemoveGamingModeProfile(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not string path) return;
+        App.Settings.GamingModeProfiles.Remove(path);
+        if (Vm.IsGamingModeActive) Vm.ClearGamingModeAppLimits(path);
+        SettingsManager.Save(App.Settings);
+        RefreshGamingModeProfilesList();
+    }
+
+    private void OnGamingModeUploadLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox tb || tb.Tag is not string path) return;
+        if (!int.TryParse(tb.Text.Trim(), out int kbs) || kbs < 0) { kbs = 0; tb.Text = "0"; }
+        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        entry.UploadKBs = kbs;
+        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        SettingsManager.Save(App.Settings);
+    }
+
+    private void OnGamingModeDownloadLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox tb || tb.Tag is not string path) return;
+        if (!int.TryParse(tb.Text.Trim(), out int kbs) || kbs < 0) { kbs = 0; tb.Text = "0"; }
+        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        entry.DownloadKBs = kbs;
+        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        SettingsManager.Save(App.Settings);
+    }
 
     // ────────── Global cap ──────────
 

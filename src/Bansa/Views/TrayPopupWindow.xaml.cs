@@ -41,8 +41,9 @@ public partial class TrayPopupWindow : Window
     {
         InitializeComponent();
 
-        // 500ms grace before fading starts — long enough that normal hover pauses
-        // won't dismiss the popup, short enough that leaving feels responsive.
+        // Fallback hide timer — used only by the non-immediate BeginFadeOut path
+        // (e.g. if the popup is somehow activated and then loses focus).
+        // The primary dismiss path is the cursor poll in TrayIconManager.
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _hideTimer.Tick += (_, _) =>
         {
@@ -50,12 +51,10 @@ public partial class TrayPopupWindow : Window
             DoFadeOut();
         };
 
-        // MouseEnter cancels any pending fade; MouseLeave is handled by the
-        // cursor-poll in TrayIconManager so we don't double-dismiss here.
+        // MouseEnter cancels any pending fade; the cursor poll in TrayIconManager
+        // handles dismissal when the cursor leaves both the popup and the tray icon.
         MouseEnter += (_, _) => CancelHide();
-        // Don't wire MouseLeave→BeginFadeOut — that fought with the cursor poll
-        // and caused the popup to flicker when the mouse moved within the window.
-        Deactivated += (_, _) => BeginFadeOut();
+        Deactivated += (_, _) => BeginFadeOut(); // safety fallback (WS_EX_NOACTIVATE means this rarely fires)
 
         // Bind stable collection once — never replace ItemsSource
         TopAppsList.ItemsSource = _topApps;
@@ -146,10 +145,18 @@ public partial class TrayPopupWindow : Window
         }
     }
 
-    public void BeginFadeOut()
+    /// <param name="immediate">
+    /// When <see langword="true"/> the 500 ms grace timer is skipped and the fade
+    /// animation begins immediately (used by the cursor poll when the mouse leaves
+    /// both the popup and the tray icon area).
+    /// </param>
+    public void BeginFadeOut(bool immediate = false)
     {
         if (_isFading) return;
-        _hideTimer.Start();
+        if (immediate)
+            DoFadeOut();
+        else
+            _hideTimer.Start();
     }
 
     private void DoFadeOut()

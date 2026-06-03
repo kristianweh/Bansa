@@ -208,7 +208,7 @@
                         <!-- Gaming Mode toggle — styled as a card, not a raw button -->
                         <Border x:Name="GamingModeCard" CornerRadius="8" Padding="12,9"
                                 Cursor="Hand" MouseLeftButtonDown="OnGamingModeBtnClick"
-                                ToolTip="Toggle Gaming Mode — applies global upload cap to prevent bufferbloat">
+                                ToolTip="Toggle Gaming Mode — applies per-app limits defined in Settings → Gaming Mode">
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
@@ -459,10 +459,30 @@
                         </Border>
 
                         <!-- Gaming Mode card -->
-                        <Border Grid.Column="6" Style="{StaticResource Card}" Padding="18,18">
+                        <Border Grid.Column="6" Padding="18,18">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsGamingModeActive}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                             <StackPanel>
-                                <TextBlock Text="GAMING MODE" FontSize="10" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,4" />
+                                <TextBlock FontSize="10" FontWeight="SemiBold" Margin="0,0,0,4">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text"       Value="GAMING MODE" />
+                                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsGamingModeActive}" Value="True">
+                                                    <Setter Property="Foreground" Value="#BBE0F8" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <TextBlock FontSize="28" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
                                            TextTrimming="CharacterEllipsis">
                                     <TextBlock.Style>
@@ -472,20 +492,7 @@
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsGamingModeActive}" Value="True">
                                                     <Setter Property="Text" Value="Active" />
-                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
-                                           Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="No target selected" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsGamingModeActive}" Value="True">
-                                                    <Setter Property="Text" Value="{Binding GamingModeTargetName}" />
+                                                    <Setter Property="Foreground" Value="White" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -740,9 +747,6 @@
                                         <MenuItem Header="Block this app" Click="OnBlockClick" />
                                         <MenuItem Header="Unblock this app" Click="OnUnblockClick" />
                                         <Separator />
-                                        <MenuItem Header="Mark as high-priority (game / voice)" Click="OnMarkGameClick" />
-                                        <MenuItem Header="Clear high-priority mark" Click="OnUnmarkGameClick" />
-                                        <Separator />
                                         <MenuItem Header="Show individual processes" Click="OnShowPidsClick" />
                                     </ContextMenu>
                                 </DataGrid.ContextMenu>
@@ -875,21 +879,6 @@
                                                             </TextBlock.Style>
                                                             <Run Text="↓ " /><Run Text="{Binding DownloadLimitText, Mode=OneWay}" />
                                                         </TextBlock>
-                                                    </Border>
-                                                    <!-- Priority (DSCP 46 = Expedited Forwarding) -->
-                                                    <Border Background="{DynamicResource BadgeGameBg}" CornerRadius="3" Padding="5,1">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding Dscp}" Value="46">
-                                                                        <Setter Property="Visibility" Value="Visible" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                        <TextBlock Text="Priority" FontSize="10" FontWeight="SemiBold"
-                                                                   Foreground="{DynamicResource AccentBrush}" />
                                                     </Border>
                                                 </StackPanel>
                                             </DataTemplate>
@@ -1292,19 +1281,6 @@
                                                         <Run Text="↓ " /><Run Text="{Binding DownloadLimitText, Mode=OneWay}" />
                                                     </TextBlock>
                                                 </Border>
-                                                <Border Background="{DynamicResource BadgeGameBg}" CornerRadius="3" Padding="6,2" Margin="0,0,4,0">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Dscp}" Value="46">
-                                                                    <Setter Property="Visibility" Value="Visible" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <TextBlock Text="Priority" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
-                                                </Border>
                                                 <!-- High connection count warning -->
                                                 <Border CornerRadius="3" Padding="6,2"
                                                         Background="#33F59E0B"
@@ -1350,9 +1326,6 @@
                                     <MenuItem Header="Block this app" Click="OnBlockClick" />
                                     <MenuItem Header="Unblock this app" Click="OnUnblockClick" />
                                     <Separator />
-                                    <MenuItem Header="Mark as high-priority (game / voice)" Click="OnMarkGameClick" />
-                                    <MenuItem Header="Clear high-priority mark" Click="OnUnmarkGameClick" />
-                                    <Separator />
                                     <MenuItem Header="Show individual processes" Click="OnShowPidsClick" />
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
@@ -1385,6 +1358,10 @@
                             <RadioButton x:Name="SettingsTabBtnNetwork"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
                                          Tag="network" Content="Network"
+                                         Click="OnSettingsTabClick" />
+                            <RadioButton x:Name="SettingsTabBtnGamingMode"
+                                         Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
+                                         Tag="gamingmode" Content="Gaming Mode"
                                          Click="OnSettingsTabClick" />
                             <RadioButton x:Name="SettingsTabBtnAppearance"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
@@ -1614,8 +1591,45 @@
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Global upload cap" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6" />
-                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,12"
-                                               Text="For ADSL/VDSL: set a global upload ceiling at ~80% of your max upload (e.g. 820 KB/s for a 1 MB/s line). This prevents the upstream buffer from filling, which eliminates the latency spike that kills gaming when any app uploads. Gaming Mode applies this cap automatically." />
+
+                                    <!-- Summary — always visible -->
+                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,4"
+                                               Text="Sets a system-wide upload ceiling to prevent buffer bloat. Recommended: ~70% of your upload speed (e.g. 700 KB/s for a 1 MB/s line) — even when your router has QoS enabled." />
+
+                                    <!-- Read more toggle -->
+                                    <ToggleButton x:Name="UploadCapReadMoreBtn" HorizontalAlignment="Left" Margin="0,2,0,10">
+                                        <ToggleButton.Style>
+                                            <Style TargetType="ToggleButton">
+                                                <Setter Property="Content"          Value="Read more ↓" />
+                                                <Setter Property="Background"       Value="Transparent" />
+                                                <Setter Property="BorderThickness"  Value="0" />
+                                                <Setter Property="Padding"          Value="0" />
+                                                <Setter Property="Cursor"           Value="Hand" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ToggleButton">
+                                                            <TextBlock Text="{TemplateBinding Content}"
+                                                                       Foreground="{DynamicResource AccentBrush}"
+                                                                       FontSize="11" Cursor="Hand" />
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter Property="Content" Value="Read less ↑" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ToggleButton.Style>
+                                    </ToggleButton>
+
+                                    <!-- Expanded explanation -->
+                                    <Border Visibility="{Binding IsChecked, ElementName=UploadCapReadMoreBtn, Converter={StaticResource BoolToVis}}"
+                                            Background="{DynamicResource PanelAltBrush}"
+                                            CornerRadius="8" Padding="12,10" Margin="0,0,0,12">
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
+                                                   Text="Router QoS limits throughput but not queue depth — packets can pile up in the modem's hardware buffer before the router's shaper acts on them, causing latency spikes even under the rate limit. Consumer QoS also uses priority bands rather than true Active Queue Management (like CAKE or fq_codel), so short bursts still build up momentary queues. Setting your cap to ~70% of your line speed leaves enough headroom that neither the router queue nor the modem buffer has a chance to fill — which is what actually eliminates jitter, rather than just capping peak speed." />
+                                    </Border>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                         <TextBox Width="110" Text="{Binding GlobalUploadCapKBs, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBlock Text="KB/s" VerticalAlignment="Center" Margin="6,0,16,0"
@@ -1828,6 +1842,124 @@
                                     <ItemsControl x:Name="PingBadSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- ══ GAMING MODE tab ══ -->
+                        <StackPanel x:Name="SettingsTabGamingMode" Visibility="Collapsed">
+
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Gaming Mode profiles" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6" />
+                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,14"
+                                               Text="When Gaming Mode is active, these per-app limits are applied automatically. Use this to throttle background apps (Spotify, Discord) so they don't compete with your game. Apps not listed are unaffected." />
+
+                                    <!-- Column headers -->
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="130" />
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="32" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="App" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MutedTextBrush}" />
+                                        <TextBlock Grid.Column="1" Text="Quick profile" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="Upload KB/s" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="Down KB/s" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                                    </Grid>
+
+                                    <!-- Profile rows -->
+                                    <ItemsControl x:Name="GamingModeProfilesControl">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,3,0,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="130" />
+                                                        <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="32" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding AppName}" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding ExePath}" />
+                                                    <ComboBox Grid.Column="1" Margin="4,0"
+                                                              ItemsSource="{Binding AvailableLimitProfiles, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              DisplayMemberPath="Name"
+                                                              Tag="{Binding ExePath}"
+                                                              SelectionChanged="OnGamingModeQuickProfileSelected" />
+                                                    <TextBox Grid.Column="2" Margin="4,0" HorizontalContentAlignment="Center"
+                                                             Text="{Binding UploadKBs}"
+                                                             Tag="{Binding ExePath}"
+                                                             LostFocus="OnGamingModeUploadLostFocus" />
+                                                    <TextBox Grid.Column="3" Margin="4,0" HorizontalContentAlignment="Center"
+                                                             Text="{Binding DownloadKBs}"
+                                                             Tag="{Binding ExePath}"
+                                                             LostFocus="OnGamingModeDownloadLostFocus" />
+                                                    <Button Grid.Column="4" Content="×" FontSize="12"
+                                                            Tag="{Binding ExePath}"
+                                                            Click="OnRemoveGamingModeProfile"
+                                                            Foreground="{DynamicResource DangerBrush}"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Padding="4,2" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Empty state -->
+                                    <TextBlock x:Name="GamingModeEmptyText"
+                                               Text="No profiles yet. Add apps below."
+                                               FontSize="11" Foreground="{DynamicResource MutedTextBrush}"
+                                               Margin="0,4,0,0" Visibility="Collapsed" />
+
+                                    <!-- Divider -->
+                                    <Border Height="1" Background="{DynamicResource MutedTextBrush}" Opacity="0.2" Margin="0,14,0,14" />
+
+                                    <!-- Add app section -->
+                                    <TextBlock Text="Add app" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,8" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <!-- TextBox + × button + anchored results popup -->
+                                        <Grid Width="220" Margin="0,0,8,0">
+                                            <TextBox x:Name="GamingModeSearchBox"
+                                                     Padding="6,4,26,4"
+                                                     TextChanged="OnGamingModeSearchTextChanged"
+                                                     GotFocus="OnGamingModeSearchGotFocus" />
+                                            <Button x:Name="GamingModeClearBtn"
+                                                    Content="×" FontSize="12"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Foreground="{DynamicResource MutedTextBrush}"
+                                                    Padding="6,2" Margin="0,0,1,0"
+                                                    Visibility="Collapsed" Cursor="Hand"
+                                                    Click="OnGamingModeSearchClear" />
+                                            <Popup x:Name="GamingModeSearchPopup"
+                                                   PlacementTarget="{Binding ElementName=GamingModeSearchBox}"
+                                                   Placement="Bottom" StaysOpen="False">
+                                                <Border Background="{DynamicResource PanelAltBrush}"
+                                                        BorderBrush="{DynamicResource MutedTextBrush}"
+                                                        BorderThickness="1" CornerRadius="0,0,4,4">
+                                                    <ListBox x:Name="GamingModeResultsList"
+                                                             DisplayMemberPath="Name"
+                                                             MaxHeight="160" MinWidth="218"
+                                                             BorderThickness="0" Background="Transparent"
+                                                             SelectionChanged="OnGamingModeResultSelected" />
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                        <Button Content="Add to profile" Padding="12,5"
+                                                Style="{StaticResource AccentButton}"
+                                                Click="OnAddGamingModeApp" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="10" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="Type to filter. Launch the app first if it doesn't appear. Set 0 for no limit on that direction." />
                                 </StackPanel>
                             </Border>
 

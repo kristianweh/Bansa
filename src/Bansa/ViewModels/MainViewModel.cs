@@ -40,7 +40,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     // Track which image paths / names have already had their saved limits restored (once per session)
     private readonly HashSet<string> _restoredLimitPaths = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _restoredLimitNames = new(StringComparer.OrdinalIgnoreCase);
     private DateTime _lastRollup = DateTime.UtcNow;
 
     // Today's usage — refreshed from the history DB every ~10 s
@@ -64,7 +63,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool useWindowsAccent;
     [ObservableProperty] private int globalUploadCapKBs;
     [ObservableProperty] private bool isGamingModeActive;
-    [ObservableProperty] private string gamingModeTargetName = "";
     [ObservableProperty] private bool showFloatingGraph;
     [ObservableProperty] private AppRowViewModel? selectedApp;
     [ObservableProperty] private bool hideLocalOnlyApps;
@@ -170,32 +168,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = "Monitor failed to start: " + ex.Message;
         }
 
-        // QoS is only used for the global upload cap (Gaming Mode).
-        // Per-app limits now use outbound firewall rules and don't need QoS at all.
-        // Run a silent background diagnosis; result goes to the Settings banner, NOT the status bar.
-        _ = Task.Run(async () =>
+        // Re-apply global upload cap from previous session (standalone — independent of Gaming Mode).
+        if (App.Settings.GlobalUploadCapKBs > 0)
         {
-            try
+            _ = Task.Run(async () =>
             {
-                if (App.Settings.GlobalUploadCapKBs > 0 || App.Settings.GamingModeActive)
-                {
-                    var problem = await QosManager.DiagnosePrerequisitesAsync();
-                    Application.Current?.Dispatcher.InvokeAsync(() => QosWarning = problem ?? "");
-                }
-            }
-            catch { }
-
-            // Re-apply global upload cap if it was active in the previous session
-            if (App.Settings.GlobalUploadCapKBs > 0)
-            {
+                var problem = await QosManager.DiagnosePrerequisitesAsync();
+                Application.Current?.Dispatcher.InvokeAsync(() => QosWarning = problem ?? "");
                 _downloadThrottler.SetGlobalUploadCap(App.Settings.GlobalUploadCapKBs);
-                if (App.Settings.GamingModeActive)
-                {
-                    try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); }
-                    catch { }
-                }
+                try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); } catch { }
+            });
+        }
+
+        // Re-apply Gaming Mode profile limits if active from previous session.
+        if (App.Settings.GamingModeActive)
+        {
+            foreach (var kv in App.Settings.GamingModeProfiles)
+            {
+                if (kv.Value.UploadKBs   > 0) _downloadThrottler.SetUploadLimit(kv.Key,   kv.Value.UploadKBs);
+                if (kv.Value.DownloadKBs > 0) _downloadThrottler.SetDownloadLimit(kv.Key, kv.Value.DownloadKBs);
             }
-        });
+        }
     }
 
     partial void OnTotalDownBpsChanged(long value) => OnPropertyChanged(nameof(TotalDownText));
@@ -419,17 +412,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         RestoreSavedLimits(row);
                     }
 
-                    // Name-based restoration for protected processes with no readable image path
-                    if (string.IsNullOrEmpty(row.ImagePath) &&
-                        _restoredLimitNames.Add(row.Name) &&
-                        App.Settings.AppHighPriorityNames.Contains(row.Name))
-                    {
-                        row.Dscp = 46;
-                        var syntheticExe = row.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                            ? row.Name : row.Name + ".exe";
-                        _ = QosManager.SetDscpAsync(syntheticExe, 46);
-                    }
-
                     sumIn += row.BytesInPerSec;
                     sumOut += row.BytesOutPerSec;
                 }
@@ -522,14 +504,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var kv in s.AppDownloadLimitsKBs.ToList())
             if (kv.Value > 0) _downloadThrottler.SetDownloadLimit(kv.Key, kv.Value);
 
-        foreach (var path in s.AppHighPriorityPaths.ToList())
-            try { await QosManager.SetDscpAsync(path, 46); } catch { }
-
-        foreach (var name in s.AppHighPriorityNames.ToList())
-        {
-            var exe = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
-            try { await QosManager.SetDscpAsync(exe, 46); } catch { }
-        }
     }
 
     private void RestoreSavedLimits(AppRowViewModel row)
@@ -561,11 +535,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _downloadThrottler.SetDownloadLimit(row.ImagePath, downKBs);
         }
 
-        // Re-apply high-priority DSCP mark
-        if (App.Settings.AppHighPriorityPaths.Contains(key))
+        // If Gaming Mode is active and this app has a profile, override the base limits now
+        if (IsGamingModeActive && App.Settings.GamingModeProfiles.TryGetValue(key, out var gm))
         {
-            row.Dscp = 46;
-            _ = QosManager.SetDscpAsync(row.ImagePath, 46);
+            if (gm.UploadKBs > 0)
+            {
+                _downloadThrottler.SetUploadLimit(row.ImagePath, gm.UploadKBs);
+                row.UploadLimitKbps = gm.UploadKBs;
+            }
+            if (gm.DownloadKBs > 0)
+            {
+                _downloadThrottler.SetDownloadLimit(row.ImagePath, gm.DownloadKBs);
+                row.DownloadLimitKbps = gm.DownloadKBs;
+            }
         }
     }
 
@@ -611,55 +593,102 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // ── Gaming Mode ───────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task ToggleGamingModeAsync()
+    private Task ToggleGamingModeAsync()
     {
         IsGamingModeActive = !IsGamingModeActive;
-        var game = SelectedApp;
+        var profiles = App.Settings.GamingModeProfiles;
 
         if (IsGamingModeActive)
         {
-            // 1. Apply global upload cap if configured — prevents ADSL bufferbloat
-            if (GlobalUploadCapKBs > 0)
+            foreach (var kv in profiles)
             {
-                _downloadThrottler.SetGlobalUploadCap(GlobalUploadCapKBs);
-                await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
-            }
-
-            // 2. Mark selected game as DSCP 46 so router gives it priority over other traffic
-            if (game != null && !string.IsNullOrEmpty(game.ImagePath))
-            {
-                GamingModeTargetName = game.Name;
-                var o = await QosManager.SetDscpAsync(game.ImagePath, 46);
-                if (o.Success)
+                var row = FindRowByPath(kv.Key);
+                if (kv.Value.UploadKBs > 0)
                 {
-                    game.Dscp = 46;
-                    App.Settings.AppHighPriorityPaths.Add(game.ImagePath.ToLowerInvariant());
-                    SettingsManager.Save(App.Settings);
-                    _history.LogActivity(game.Name, "priority_on", "Gaming mode – DSCP 46");
+                    _downloadThrottler.SetUploadLimit(kv.Key, kv.Value.UploadKBs);
+                    if (row != null) row.UploadLimitKbps = kv.Value.UploadKBs;
                 }
-                StatusText = GlobalUploadCapKBs > 0
-                    ? $"Gaming mode ON — {game.Name} prioritised, upload capped at {Format.KBps(GlobalUploadCapKBs)}."
-                    : $"Gaming mode ON — {game.Name} marked high-priority (configure a cap in Settings for full protection).";
+                if (kv.Value.DownloadKBs > 0)
+                {
+                    _downloadThrottler.SetDownloadLimit(kv.Key, kv.Value.DownloadKBs);
+                    if (row != null) row.DownloadLimitKbps = kv.Value.DownloadKBs;
+                }
             }
-            else
-            {
-                GamingModeTargetName = "";
-                StatusText = GlobalUploadCapKBs > 0
-                    ? $"Gaming mode ON — upload capped at {Format.KBps(GlobalUploadCapKBs)}. Select a game first to mark it as high-priority."
-                    : "Gaming mode ON — select a game and set a global cap in Settings for full ADSL protection.";
-            }
+            int count = profiles.Count;
+            StatusText = count > 0
+                ? $"Gaming mode ON — {count} app {(count == 1 ? "profile" : "profiles")} applied."
+                : "Gaming mode ON — no profiles configured. Add apps in Settings → Gaming Mode.";
         }
         else
         {
-            GamingModeTargetName = "";
-            // Remove global cap when gaming mode goes off
-            if (GlobalUploadCapKBs > 0)
+            foreach (var kv in profiles)
             {
-                _downloadThrottler.SetGlobalUploadCap(0);
-                await QosManager.SetGlobalUploadCapAsync(0);
+                var row = FindRowByPath(kv.Key);
+                // Restore per-app limits from persistent settings (0 = no limit)
+                if (kv.Value.UploadKBs > 0)
+                {
+                    var baseUp = App.Settings.AppUploadLimitsKBs.TryGetValue(kv.Key, out var u) ? u : 0;
+                    _downloadThrottler.SetUploadLimit(kv.Key, baseUp);
+                    if (row != null) row.UploadLimitKbps = baseUp;
+                }
+                if (kv.Value.DownloadKBs > 0)
+                {
+                    var baseDown = App.Settings.AppDownloadLimitsKBs.TryGetValue(kv.Key, out var d) ? d : 0;
+                    _downloadThrottler.SetDownloadLimit(kv.Key, baseDown);
+                    if (row != null) row.DownloadLimitKbps = baseDown;
+                }
             }
+            StatusText = "Gaming mode OFF — per-app limits restored.";
+        }
 
-            StatusText = "Gaming mode OFF — global upload cap removed.";
+        return Task.CompletedTask;
+    }
+
+    private AppRowViewModel? FindRowByPath(string path)
+        => Apps.FirstOrDefault(a => string.Equals(a.ImagePath, path, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Removes Gaming Mode override for one path and restores its base limit from settings.
+    /// Called when a profile entry is deleted while Gaming Mode is on.
+    /// </summary>
+    public void ClearGamingModeAppLimits(string path)
+    {
+        var row = FindRowByPath(path);
+        var baseUp   = App.Settings.AppUploadLimitsKBs.TryGetValue(path,   out var u) ? u : 0;
+        var baseDown = App.Settings.AppDownloadLimitsKBs.TryGetValue(path, out var d) ? d : 0;
+        _downloadThrottler.SetUploadLimit(path,   baseUp);
+        _downloadThrottler.SetDownloadLimit(path, baseDown);
+        if (row != null) { row.UploadLimitKbps = baseUp; row.DownloadLimitKbps = baseDown; }
+    }
+
+    /// <summary>
+    /// Applies Gaming Mode profile limits live (called when settings are edited while mode is on).
+    /// 0 in either direction = restore base limit for that direction.
+    /// </summary>
+    public void ApplyGamingModeAppLimits(string path, GamingModeEntry entry)
+    {
+        var row = FindRowByPath(path);
+        if (entry.UploadKBs > 0)
+        {
+            _downloadThrottler.SetUploadLimit(path, entry.UploadKBs);
+            if (row != null) row.UploadLimitKbps = entry.UploadKBs;
+        }
+        else
+        {
+            var baseUp = App.Settings.AppUploadLimitsKBs.TryGetValue(path, out var u) ? u : 0;
+            _downloadThrottler.SetUploadLimit(path, baseUp);
+            if (row != null) row.UploadLimitKbps = baseUp;
+        }
+        if (entry.DownloadKBs > 0)
+        {
+            _downloadThrottler.SetDownloadLimit(path, entry.DownloadKBs);
+            if (row != null) row.DownloadLimitKbps = entry.DownloadKBs;
+        }
+        else
+        {
+            var baseDown = App.Settings.AppDownloadLimitsKBs.TryGetValue(path, out var d) ? d : 0;
+            _downloadThrottler.SetDownloadLimit(path, baseDown);
+            if (row != null) row.DownloadLimitKbps = baseDown;
         }
     }
 
@@ -778,66 +807,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task MarkAsGameAsync(AppRowViewModel? app)
-    {
-        if (app is null) return;
-
-        // For protected processes (Vanguard, etc.) ImagePath is empty — synthesize the exe name
-        bool nameOnly = string.IsNullOrEmpty(app.ImagePath);
-        string effectivePath = nameOnly
-            ? (app.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? app.Name : app.Name + ".exe")
-            : app.ImagePath;
-
-        var o = await QosManager.SetDscpAsync(effectivePath, 46);
-        if (o.Success)
-        {
-            app.Dscp = 46;
-            if (nameOnly)
-                App.Settings.AppHighPriorityNames.Add(app.Name);
-            else
-                App.Settings.AppHighPriorityPaths.Add(app.ImagePath.ToLowerInvariant());
-            SettingsManager.Save(App.Settings);
-            _history.LogActivity(app.Name, "priority_on", "DSCP 46");
-            StatusText = $"Marked {app.Name} as high-priority (DSCP 46).";
-        }
-        else
-        {
-            StatusText = $"Failed to set priority on {app.Name}: {o.Detail}";
-            MessageBox.Show(
-                $"Setting high-priority on '{app.Name}' failed.\n\n{o.Detail}\n\n" +
-                "Ensure Bansa is running as Administrator and the QoS Packet Scheduler is enabled on your adapter " +
-                "(Network Connections → adapter Properties → tick 'QoS Packet Scheduler').",
-                "Bansa — Priority failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-        }
-    }
-
-    [RelayCommand]
-    private async Task UnmarkGameAsync(AppRowViewModel? app)
-    {
-        if (app is null) return;
-
-        bool nameOnly = string.IsNullOrEmpty(app.ImagePath);
-        string effectivePath = nameOnly
-            ? (app.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? app.Name : app.Name + ".exe")
-            : app.ImagePath;
-
-        var o = await QosManager.SetDscpAsync(effectivePath, 0);
-        if (o.Success)
-        {
-            app.Dscp = 0;
-            if (nameOnly)
-                App.Settings.AppHighPriorityNames.Remove(app.Name);
-            else
-                App.Settings.AppHighPriorityPaths.Remove(app.ImagePath.ToLowerInvariant());
-            SettingsManager.Save(App.Settings);
-            _history.LogActivity(app.Name, "priority_off");
-        }
-        StatusText = o.Success ? $"Cleared priority on {app.Name}." : $"Failed: {o.Detail}";
-    }
-
-    [RelayCommand]
     private void PinApp(AppRowViewModel? app)
     {
         if (app is null) return;
@@ -889,14 +858,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             a.IsBlocked         = false;
             a.UploadLimitKbps   = 0;
             a.DownloadLimitKbps = 0;
-            a.Dscp              = 0;
+        }
+        // Remove Gaming Mode profile limits if active
+        if (IsGamingModeActive)
+        {
+            IsGamingModeActive = false;
+            foreach (var kv in App.Settings.GamingModeProfiles)
+            {
+                if (kv.Value.UploadKBs   > 0) _downloadThrottler.SetUploadLimit(kv.Key,   0);
+                if (kv.Value.DownloadKBs > 0) _downloadThrottler.SetDownloadLimit(kv.Key, 0);
+            }
         }
         // Clear persisted rules so they aren't re-applied on next startup
         App.Settings.AppDownloadLimitsKBs.Clear();
         App.Settings.AppUploadLimitsKBs.Clear();
         App.Settings.AppBlockedPaths.Clear();
-        App.Settings.AppHighPriorityPaths.Clear();
-        App.Settings.AppHighPriorityNames.Clear();
         SettingsManager.Save(App.Settings);
 
         StatusText = "Cleanup complete.";

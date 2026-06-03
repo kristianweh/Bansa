@@ -24,6 +24,10 @@ public sealed class TrayIconManager : IDisposable
     private readonly Window _ownerWindow;
     private readonly TrayPopupWindow _popup;
     private readonly DispatcherTimer _cursorPoll;
+    private readonly DispatcherTimer _hoverTimer;         // delay before showing popup on hover
+    private volatile int _iconX = int.MinValue;           // cursor X (physical px) captured on last MouseMove
+    private volatile int _iconY = int.MinValue;           // cursor Y (physical px) captured on last MouseMove
+    private DateTime _popupShowTime = DateTime.MinValue;  // when popup was most recently shown
     private IntPtr _currentIconHandle = IntPtr.Zero;
     private int _iconSize;
 
@@ -45,6 +49,10 @@ public sealed class TrayIconManager : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X, Y; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+
     public TrayIconManager(Window ownerWindow, Action? onQuit = null)
     {
         _ownerWindow = ownerWindow;
@@ -53,8 +61,22 @@ public sealed class TrayIconManager : IDisposable
         _tray = new WinForms.NotifyIcon { Visible = App.Settings?.ShowTrayIcon != false };
         _tray.MouseClick       += OnTrayClick;
         _tray.MouseDoubleClick += OnTrayDoubleClick;
+        _tray.MouseMove        += OnTrayMouseMove;
 
         _popup = new TrayPopupWindow();
+
+        // 200 ms hover-to-show timer — fires once, verifies cursor is still over the
+        // tray icon (not just somewhere on the taskbar), then shows the popup.
+        _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
+        _hoverTimer.Tick += (_, _) =>
+        {
+            _hoverTimer.Stop();
+            if (_popup.IsVisible) return;
+            // Check live cursor position — if mouse passed quickly the cursor will no
+            // longer be inside the icon hitbox and the popup should not appear.
+            if (GetCursorPos(out var pt) && IsCursorOverTrayIcon(pt))
+                ShowPopup();
+        };
 
         var pinItem = new WinForms.ToolStripMenuItem("Always on top") { CheckOnClick = true, Checked = true };
         var ctItem  = new WinForms.ToolStripMenuItem("Click through")  { CheckOnClick = true, Checked = false };
@@ -110,42 +132,97 @@ public sealed class TrayIconManager : IDisposable
         if (e.Button != WinForms.MouseButtons.Left) return;
         Application.Current.Dispatcher.Invoke(() =>
         {
-            if (_popup.IsVisible)
-                _popup.BeginFadeOut();
-            else
-                ShowPopup();
+            // Dismiss popup (if open) then open the main window.
+            if (_popup.IsVisible) _popup.BeginFadeOut(immediate: true);
+            ShowMainWindow();
         });
     }
 
     private void OnTrayDoubleClick(object? sender, WinForms.MouseEventArgs e)
     {
         if (e.Button == WinForms.MouseButtons.Left)
-            Application.Current.Dispatcher.Invoke(ShowMainWindow);
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (_popup.IsVisible) _popup.BeginFadeOut(immediate: true);
+                ShowMainWindow();
+            });
+    }
+
+    private void OnTrayMouseMove(object? sender, WinForms.MouseEventArgs e)
+    {
+        // Capture the exact cursor position now — this point is guaranteed to be inside
+        // the icon.  Written before InvokeAsync so it's ready for the timer tick.
+        if (GetCursorPos(out var snap)) { _iconX = snap.X; _iconY = snap.Y; }
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            if (_popup.IsVisible)
+            {
+                // Cursor is back over the tray icon while popup is open — keep it alive.
+                _popup.CancelHide();
+                return;
+            }
+            // Start the 200 ms hover timer (idempotent — ignore if already running).
+            if (!_hoverTimer.IsEnabled)
+                _hoverTimer.Start();
+        });
     }
 
     private void OnCursorPoll(object? sender, EventArgs e)
     {
-        // Poll only to dismiss popup when cursor leaves the popup window area
+        // Stop once the popup has fully hidden.
         if (!_popup.IsVisible) { _cursorPoll.Stop(); return; }
 
-        bool overPopup = false;
-        if (GetCursorPos(out var p))
-        {
-            var src = System.Windows.Interop.HwndSource.FromHwnd(
-                new System.Windows.Interop.WindowInteropHelper(_popup).Handle);
-            if (src?.CompositionTarget is { } ct)
-            {
-                double sx = ct.TransformToDevice.M11;
-                double sy = ct.TransformToDevice.M22;
-                overPopup = p.X >= (int)(_popup.Left * sx) && p.X <= (int)((_popup.Left + _popup.Width)  * sx)
-                         && p.Y >= (int)(_popup.Top  * sy) && p.Y <= (int)((_popup.Top  + _popup.Height) * sy);
-            }
-        }
+        // Grace window: give the user time to move the cursor from the tray icon to the
+        // popup after it appears.  During this window we never auto-dismiss.
+        if ((DateTime.UtcNow - _popupShowTime).TotalMilliseconds < 500) return;
 
-        if (!overPopup)
+        if (!GetCursorPos(out var p)) return;
+
+        if (IsCursorOverPopup(p) || IsCursorOverTrayIcon(p))
         {
-            _cursorPoll.Stop();
+            // Cursor is over the popup or exactly over the tray icon — keep the popup alive.
+            _popup.CancelHide();
         }
+        else
+        {
+            // Cursor left both areas — dismiss without delay.
+            _popup.BeginFadeOut(immediate: true);
+            // Keep polling; the poll stops itself once IsVisible becomes false.
+        }
+    }
+
+    /// <summary>Returns true when the cursor (physical px) is inside the popup window.</summary>
+    private bool IsCursorOverPopup(POINT p)
+    {
+        var src = System.Windows.Interop.HwndSource.FromHwnd(
+            new System.Windows.Interop.WindowInteropHelper(_popup).Handle);
+        if (src?.CompositionTarget is { } ct)
+        {
+            double sx = ct.TransformToDevice.M11;
+            double sy = ct.TransformToDevice.M22;
+            return p.X >= (int)(_popup.Left  * sx) && p.X <= (int)((_popup.Left  + _popup.Width)  * sx)
+                && p.Y >= (int)(_popup.Top   * sy) && p.Y <= (int)((_popup.Top   + _popup.Height) * sy);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="p"/> is inside a tight hitbox centred on the
+    /// last known icon position (captured via <see cref="GetCursorPos"/> at the moment
+    /// <see cref="WinForms.NotifyIcon.MouseMove"/> fired — the only time the cursor is
+    /// guaranteed to be over the icon).
+    ///
+    /// HitPad of ±8 physical px keeps the hitbox tight to the icon body (16 px at
+    /// 100 % DPI) and well clear of adjacent elements like the overflow chevron.
+    /// </summary>
+    private bool IsCursorOverTrayIcon(POINT p)
+    {
+        int ix = _iconX, iy = _iconY;   // snapshot — avoids torn reads of volatile fields
+        if (ix == int.MinValue) return false;   // no MouseMove captured yet
+
+        const int HitPad = 5;   // physical pixels in each direction — tight to the icon
+        return p.X >= ix - HitPad && p.X <= ix + HitPad
+            && p.Y >= iy - HitPad && p.Y <= iy + HitPad;
     }
 
     private void ShowPopup()
@@ -156,6 +233,7 @@ public sealed class TrayIconManager : IDisposable
             // Use saved position if available, else default to bottom-right corner
             double px = App.Settings?.TrayPopupX >= 0 ? App.Settings.TrayPopupX : wa.Right  - 8;
             double py = App.Settings?.TrayPopupY >= 0 ? App.Settings.TrayPopupY : wa.Bottom - 8;
+            _popupShowTime = DateTime.UtcNow;   // stamp before Show so grace period starts now
             _popup.ShowAt(px, py);
             _popup.Update(_lastDown, _lastUp, _lastPing, _lastHistory, _lastApps);
             _cursorPoll.Start();
@@ -181,7 +259,6 @@ public sealed class TrayIconManager : IDisposable
         _lastHistory = history; _lastApps = apps.ToList();
 
         UpdateIcon(totalDownBps, totalUpBps);
-        UpdateTooltip(totalDownBps, totalUpBps, pingMs);
 
         if (_popup.IsVisible)
         {
@@ -306,12 +383,6 @@ public sealed class TrayIconManager : IDisposable
         return fallback;
     }
 
-    private void UpdateTooltip(long downBps, long upBps, int pingMs)
-    {
-        var text = $"↓ {Format.Rate(downBps)}   ↑ {Format.Rate(upBps)}\nPing: {(pingMs < 0 ? "—" : $"{pingMs} ms")}";
-        if (text.Length > 127) text = text.Substring(0, 127);
-        _tray.Text = text;
-    }
 
     public void Dispose()
     {

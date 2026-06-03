@@ -6,6 +6,14 @@ namespace Bansa.Services;
 
 public enum RateUnit { Bytes, Bits }
 
+/// <summary>Per-app limit applied when Gaming Mode is active.</summary>
+public class GamingModeEntry
+{
+    public string AppName    { get; set; } = "";
+    public int    UploadKBs  { get; set; } = 0;
+    public int    DownloadKBs{ get; set; } = 0;
+}
+
 /// <summary>A named bandwidth-limit preset that can be applied from the limit window.</summary>
 public class LimitProfile
 {
@@ -42,10 +50,15 @@ public class BansaSettings
     public string PingBadColorHex  { get; set; } = "#F43F5E";
 
     // ── Global upload cap ────────────────────────────────────────────────────
-    // A system-wide QoS ceiling (no app filter) applied by Gaming Mode.
-    // 0 = disabled. Keep at ~80% of your line's max upload to prevent bufferbloat.
+    // For users without router-level QoS: system-wide upload ceiling enforced via
+    // QoS Group Policy + pulsed firewall rules. 0 = disabled.
     public int GlobalUploadCapKBs { get; set; } = 0;
+
+    // ── Gaming Mode ───────────────────────────────────────────────────────────
+    // When true, per-app limits from GamingModeProfiles are applied.
     public bool GamingModeActive  { get; set; } = false;
+    // Key = exe path (lowercased). Applied on activation, removed on deactivation.
+    public Dictionary<string, GamingModeEntry> GamingModeProfiles { get; set; } = new();
 
     // ── Ping target labels ───────────────────────────────────────────────────
     // Optional display name for each ping target.  Key = IP/hostname (case-insensitive).
@@ -68,11 +81,6 @@ public class BansaSettings
     public HashSet<string> AppBlockedPaths { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     // Paths of apps pinned to the top of the process list (lowercased).
     public List<string> PinnedAppPaths { get; set; } = new();
-    // Apps marked as high-priority (DSCP 46). Re-applied on startup.
-    public HashSet<string> AppHighPriorityPaths { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    // Name-only fallback for protected processes (e.g. Valorant) where ImagePath is empty.
-    public HashSet<string> AppHighPriorityNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
     // ── Global hotkey ─────────────────────────────────────────────────────────
     // Virtual-key code for the Ctrl+Shift+? hotkey. 0x46='F' default. 0 = no hotkey (cleared by user).
     public int HotkeyVirtualKey { get; set; } = 0x46;

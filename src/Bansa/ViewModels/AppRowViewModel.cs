@@ -27,7 +27,6 @@ public partial class AppRowViewModel : ObservableObject
     [ObservableProperty] private bool isBlocked;
     [ObservableProperty] private int uploadLimitKbps;
     [ObservableProperty] private int downloadLimitKbps;
-    [ObservableProperty] private int dscp;
     [ObservableProperty] private bool isExpanded;
     [ObservableProperty] private bool isPinned;
     [ObservableProperty] private string hourlyDownText = "";
@@ -54,7 +53,7 @@ public partial class AppRowViewModel : ObservableObject
         get
         {
             if (IsPinned) return 0;
-            if (IsBlocked || UploadLimitKbps > 0 || DownloadLimitKbps > 0 || Dscp > 0) return 1;
+            if (IsBlocked || UploadLimitKbps > 0 || DownloadLimitKbps > 0) return 1;
             return 2;
         }
     }
@@ -147,7 +146,6 @@ public partial class AppRowViewModel : ObservableObject
     partial void OnUploadLimitKbpsChanged(int value)   { OnPropertyChanged(nameof(UploadLimitText)); OnPropertyChanged(nameof(SortPriority)); }
     partial void OnDownloadLimitKbpsChanged(int value) { OnPropertyChanged(nameof(DownloadLimitText)); OnPropertyChanged(nameof(SortPriority)); }
     partial void OnIsBlockedChanged(bool value)        { OnPropertyChanged(nameof(SortPriority)); }
-    partial void OnDscpChanged(int value)              { OnPropertyChanged(nameof(SortPriority)); }
     partial void OnIsPinnedChanged(bool value)         { OnPropertyChanged(nameof(SortPriority)); }
 
     /// <summary>Refresh all unit-dependent display properties.</summary>
