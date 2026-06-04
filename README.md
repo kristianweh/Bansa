@@ -2,7 +2,7 @@
 
 A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
-> **Status:** v0.8 — personal use, no commercial intent.
+> **Status:** v0.9 — personal use, no commercial intent.
 
 ---
 

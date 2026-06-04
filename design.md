@@ -65,7 +65,7 @@ No background service. No driver. No IPC layer needed (everything runs in one pr
 - **Delayed priority mode.** No equivalent without a driver. We can fake it via rate limit + low DSCP value.
 - **Deep packet inspection.** Not feasible from user-mode. Out of scope.
 
-## Feature status (v0.8)
+## Feature status (v0.9)
 
 - ✅ Live process list with up/down rate and connection counts
 - ✅ Double-click to see individual processes and connections
