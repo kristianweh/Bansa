@@ -57,6 +57,11 @@ public class BansaSettings
     // KB/s value. The cap is active only when Enabled AND GlobalUploadCapKBs > 0.
     // Defaults true so a previously-saved cap value stays active across the upgrade.
     public bool GlobalUploadCapEnabled { get; set; } = true;
+    // When true, the QoS soft-cap policy is left in place on exit so the cap keeps working
+    // (and applies at Windows startup) without Bansa running. Deliberate exception to the
+    // "tear everything down on exit" invariant — removed by Disable, the Clean Up button,
+    // or Uninstall-Bansa.ps1. The firewall hard layer still requires the app to be running.
+    public bool GlobalUploadCapPersist { get; set; } = false;
 
     // ── Gaming Mode ───────────────────────────────────────────────────────────
     // When true, per-app limits from GamingModeProfiles are applied.

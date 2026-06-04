@@ -1649,6 +1649,13 @@
                                     </StackPanel>
                                     <TextBlock Text="0 = no cap. Use the switch above to pause the cap without losing this value. Changes take effect immediately and survive reboot." FontSize="11"
                                                TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" />
+
+                                    <CheckBox Content="Keep cap active when Bansa is closed"
+                                              IsChecked="{Binding IsGlobalUploadCapPersistent}"
+                                              Margin="0,12,0,0"
+                                              ToolTip="Leaves the Windows QoS policy in place after Bansa exits, so the cap keeps working — and applies at Windows startup — without the app running." />
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,0"
+                                               Text="Only the smooth QoS layer stays active while Bansa is closed (the firewall layer needs the app running). This intentionally leaves a Windows QoS policy behind after exit — turning the cap off here, or the &quot;Clean Up&quot; button under System changes, removes it cleanly. Deleting the Bansa folder alone won't." />
                                     <!-- QoS warning banner -->
                                     <Border Visibility="{Binding QosWarningVisible, Converter={StaticResource BoolToVis}}"
                                             Background="#22F59E0B" BorderBrush="#55F59E0B" BorderThickness="1"

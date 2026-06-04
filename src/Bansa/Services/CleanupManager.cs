@@ -28,7 +28,12 @@ public static class CleanupManager
     /// Removes everything Bansa has put on the system.
     /// </summary>
     /// <param name="removeDataFolder">If true, also deletes %LocalAppData%\Bansa\</param>
-    public static async Task<Report> RunAsync(bool removeDataFolder)
+    /// <param name="preserveGlobalCapKBs">
+    /// When &gt; 0, the global upload-cap QoS policy is re-asserted at this rate after teardown,
+    /// so a user who opted into "keep cap active when Bansa is closed" keeps the soft cap on exit.
+    /// The firewall hard layer is still torn down — it can't run without the app.
+    /// </param>
+    public static async Task<Report> RunAsync(bool removeDataFolder, int preserveGlobalCapKBs = 0)
     {
         var report = new Report();
 
@@ -43,6 +48,9 @@ public static class CleanupManager
         try
         {
             report.QosPoliciesRemoved = await QosManager.RemoveAllBansaPoliciesAsync();
+            // Re-assert the persistent global cap AFTER the broad removal, so it survives exit.
+            if (preserveGlobalCapKBs > 0)
+                await QosManager.SetGlobalUploadCapAsync(preserveGlobalCapKBs);
         }
         catch (Exception ex) { report.Error = (report.Error is null ? "" : report.Error + "\n") + "QoS cleanup: " + ex.Message; }
 

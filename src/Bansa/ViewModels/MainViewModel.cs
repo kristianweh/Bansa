@@ -63,6 +63,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool useWindowsAccent;
     [ObservableProperty] private int globalUploadCapKBs;
     [ObservableProperty] private bool isGlobalUploadCapEnabled;
+    [ObservableProperty] private bool isGlobalUploadCapPersistent;
     [ObservableProperty] private bool isGamingModeActive;
     [ObservableProperty] private bool showFloatingGraph;
     [ObservableProperty] private AppRowViewModel? selectedApp;
@@ -149,6 +150,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Set the backing field directly so the OnChanged handler doesn't apply the cap during
         // construction — the startup block below owns the initial apply.
         isGlobalUploadCapEnabled = App.Settings.GlobalUploadCapEnabled;
+        IsGlobalUploadCapPersistent = App.Settings.GlobalUploadCapPersist;
         IsGamingModeActive = App.Settings.GamingModeActive;
         ShowFloatingGraph  = App.Settings.ShowFloatingGraph;
         HideLocalOnlyApps  = App.Settings.HideLocalOnlyApps;
@@ -232,6 +234,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnGlobalUploadCapKBsChanged(int value)
     {
         App.Settings.GlobalUploadCapKBs = value;
+        SettingsManager.Save(App.Settings);
+    }
+
+    partial void OnIsGlobalUploadCapPersistentChanged(bool value)
+    {
+        // Only affects exit behaviour (whether the QoS policy is left in place); nothing to
+        // apply now — the cap is already active or not per the Enabled switch.
+        App.Settings.GlobalUploadCapPersist = value;
         SettingsManager.Save(App.Settings);
     }
 
@@ -1024,8 +1034,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // ── Tear down all OS-level rules when Bansa exits ───────────────────────
         // Limits are only active while Bansa runs; we re-apply them on next startup.
+        // Exception: if the user opted to keep the global cap active while closed, the
+        // QoS soft-cap policy is left in place (re-asserted after the broad teardown).
         // Fire-and-forget is fine here — we're on the UI thread during shutdown and
         // can't await, but the PowerShell processes will complete in the background.
-        _ = CleanupManager.RunAsync(removeDataFolder: false);
+        int preserveCap = App.Settings.GlobalUploadCapPersist
+                          && App.Settings.GlobalUploadCapEnabled
+                          && App.Settings.GlobalUploadCapKBs > 0
+            ? App.Settings.GlobalUploadCapKBs
+            : 0;
+        _ = CleanupManager.RunAsync(removeDataFolder: false, preserveGlobalCapKBs: preserveCap);
     }
 }

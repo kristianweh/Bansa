@@ -16,7 +16,17 @@ Every system change Bansa makes, where it lives, and how it gets undone. If this
 | 10 | Crash log | `App.OnAppDomainUnhandledException` | `%LocalAppData%\Bansa\crash.log` | Delete the folder |
 
 That's the complete list of writable state Bansa touches. Nothing is written outside of these paths.
-All firewall rules (block + throttle + global-cap) and the QoS policy are torn down together by `CleanupManager.RunAsync`, the in-app Cleanup button, and `Uninstall-Bansa.ps1`.
+All firewall rules (block + throttle + global-cap) and the QoS policies are torn down together by `CleanupManager.RunAsync`, the in-app Cleanup button, and `Uninstall-Bansa.ps1`.
+
+### One opt-in exception to "torn down on exit"
+
+If the user enables **"Keep cap active when Bansa is closed"** (Network → Global upload cap), the
+soft-cap QoS policy `Bansa-Qos-Global-Upload` is **deliberately left in place** on exit so the cap
+keeps working — and applies at Windows startup — without the app running. This is the only state
+Bansa intentionally leaves behind. It is still fully reversible and removed by any of:
+turning the cap off in-app, the **Clean Up** button (System changes), or `Uninstall-Bansa.ps1`.
+The firewall hard layer is never persisted (it requires the running app). Caveat: deleting the
+Bansa folder *without* first running Clean Up / Uninstall leaves this one policy behind.
 
 ## Three independent paths to a clean system
 
