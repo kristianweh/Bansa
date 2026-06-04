@@ -118,7 +118,7 @@ Bansa's download limit works by:
 2. When the rate exceeds the cap, Bansa temporarily adds an inbound firewall block for that app.
 3. When the rate drops back, the block is removed.
 
-This results in a **stutter pattern**: short downloads alternating with short blocks. The **average rate** matches your cap, but the connection isn't smoothly paced like with a kernel-level driver. For most use cases (keeping a backup app from saturating your link, capping a video stream's bitrate) it works well enough.
+This results in a **stutter pattern**: bursts of download alternating with blocks. The block length scales with how far over the cap the app is — a download running far above the limit can be blocked for several seconds at a time before a short burst, while one hovering near the cap toggles quickly. Either way the **average rate** matches your cap, but the connection isn't smoothly paced like with a kernel-level driver. For most use cases (keeping a backup app from saturating your link, capping a video stream's bitrate) it works well enough.
 
 ---
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
@@ -77,6 +78,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public bool QosWarningVisible => !string.IsNullOrEmpty(QosWarning);
     partial void OnQosWarningChanged(string value) => OnPropertyChanged(nameof(QosWarningVisible));
+
+    /// <summary>Assembly version (from the csproj &lt;Version&gt;), shown in Settings → General.</summary>
+    public string AppVersion
+    {
+        get
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+            if (string.IsNullOrEmpty(v)) return "Bansa";
+            var plus = v.IndexOf('+');          // strip SourceLink build metadata if present
+            if (plus >= 0) v = v[..plus];
+            return $"Bansa v{v}";
+        }
+    }
 
     public string TotalDownText  => Format.Rate(TotalDownBps);
     public string TotalUpText    => Format.Rate(TotalUpBps);

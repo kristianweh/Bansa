@@ -367,10 +367,21 @@ public sealed class DownloadThrottler : IDisposable
                 // to avoid toggling rules for idle background processes.
                 const long kActiveThreshold = 1024;
 
+                // Apps with an explicit per-app limit are skipped — but match on the RESOLVED path
+                // the global snapshot is keyed by (st.ImagePath), not the dict's settings-key, which
+                // can differ. Otherwise an app with its own (smooth QoS) upload limit could also get
+                // firewall-pulsed by the global cap.
+                HashSet<string>? limitedPaths = null;
+                if (_byImagePath.Count > 0)
+                {
+                    limitedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var s in _byImagePath.Values) limitedPaths.Add(s.ImagePath);
+                }
+
                 foreach (var (path, curBytes) in pathSnapshot)
                 {
                     // Paths with explicit per-app limits are already managed above
-                    if (_byImagePath.ContainsKey(path)) continue;
+                    if (limitedPaths != null && limitedPaths.Contains(path)) continue;
 
                     // Compute per-path delta to determine activity
                     _globalPathLastBytes.TryGetValue(path, out long prevBytes);
@@ -572,6 +583,11 @@ public sealed class DownloadThrottler : IDisposable
             catch { return false; }
         });
 
+    // Rule name is derived from the exe FILENAME, so two different executables with the same name
+    // (e.g. two node.exe in different folders) collapse to one rule and can't be limited
+    // independently. This is intentional and consistent across the app: QoS policy names
+    // (QosManager.MakePolicyName) and the settings-clear logic (MainViewModel.RemoveLimitByFile)
+    // all key by filename too. A personal-use trade-off; full-path identity would desync the layers.
     private static string MakeRuleName(string prefix, string exePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(exePath);

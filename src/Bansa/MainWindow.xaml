@@ -1520,6 +1520,10 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Version footer -->
+                            <TextBlock Text="{Binding AppVersion}" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,2,0,4" />
+
                         </StackPanel>
 
                         <!-- ══ NETWORK tab: Limit profiles · Global cap · Connection speed · Ping · Speed test ══ -->
