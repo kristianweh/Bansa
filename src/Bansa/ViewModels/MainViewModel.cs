@@ -765,6 +765,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusText = ok ? $"Unblocked {app.Name}." : $"Failed to unblock {app.Name}.";
     }
 
+    // Removes a per-app limit from settings by exe FILENAME rather than full path. The QoS policy
+    // and firewall rule both identify an app by filename, and a multi-process app's row path can
+    // drift (the row uses the longest child path), so a path-exact Remove can miss the stored key
+    // and the limit gets re-applied on the next launch. Filename match keeps "Clear" reliable and
+    // also sweeps any drift-orphaned duplicate entries — same granularity as the firewall/QoS layers.
+    private static void RemoveLimitByFile(Dictionary<string, int> dict, string imagePath)
+    {
+        var file = System.IO.Path.GetFileName(imagePath);
+        if (string.IsNullOrEmpty(file)) return;
+        foreach (var k in dict.Keys
+                     .Where(k => string.Equals(System.IO.Path.GetFileName(k), file, StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+            dict.Remove(k);
+    }
+
     [RelayCommand]
     private async Task ApplyLimitsAsync((AppRowViewModel app, int upKbps, int downKbps)? param)
     {
@@ -786,8 +801,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             bool verified = await _downloadThrottler.ClearAndVerifyAsync(
                 app.ImagePath, clearDown: clearingDown, clearUp: clearingUp);
 
-            if (clearingUp)   { app.UploadLimitKbps   = 0; App.Settings.AppUploadLimitsKBs.Remove(key); }
-            if (clearingDown) { app.DownloadLimitKbps  = 0; App.Settings.AppDownloadLimitsKBs.Remove(key); }
+            if (clearingUp)   { app.UploadLimitKbps   = 0; RemoveLimitByFile(App.Settings.AppUploadLimitsKBs,   app.ImagePath); }
+            if (clearingDown) { app.DownloadLimitKbps  = 0; RemoveLimitByFile(App.Settings.AppDownloadLimitsKBs, app.ImagePath); }
 
             // Apply any direction that still has a positive limit.
             if (!clearingUp && up > 0)
@@ -1036,13 +1051,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Limits are only active while Bansa runs; we re-apply them on next startup.
         // Exception: if the user opted to keep the global cap active while closed, the
         // QoS soft-cap policy is left in place (re-asserted after the broad teardown).
-        // Fire-and-forget is fine here — we're on the UI thread during shutdown and
-        // can't await, but the PowerShell processes will complete in the background.
+        //
+        // This MUST block until done: fire-and-forget let the process exit mid-cleanup,
+        // leaving QoS policies (and firewall rules) behind. We run it via Task.Run so the
+        // awaits inside don't capture the UI SynchronizationContext (which would deadlock a
+        // .Wait() on this thread), and cap the wait so a hung COM/registry call can't wedge
+        // shutdown — the process is exiting regardless.
         int preserveCap = App.Settings.GlobalUploadCapPersist
                           && App.Settings.GlobalUploadCapEnabled
                           && App.Settings.GlobalUploadCapKBs > 0
             ? App.Settings.GlobalUploadCapKBs
             : 0;
-        _ = CleanupManager.RunAsync(removeDataFolder: false, preserveGlobalCapKBs: preserveCap);
+        try
+        {
+            Task.Run(() => CleanupManager.RunAsync(removeDataFolder: false, preserveGlobalCapKBs: preserveCap))
+                .Wait(TimeSpan.FromSeconds(8));
+        }
+        catch { /* best-effort teardown on shutdown */ }
     }
 }
