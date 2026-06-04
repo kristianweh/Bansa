@@ -79,6 +79,19 @@ public sealed class DownloadThrottler : IDisposable
     private readonly System.Threading.Timer _innerTimer;
     private bool _disposed;
 
+    // ── Desired-state firewall reconciliation ─────────────────────────────────
+    // Authoritative map of "which rules SHOULD currently be blocking" (rule name -> exe + dir).
+    // Guarded by _lock. A rule absent from this map should NOT exist in Windows Firewall.
+    //
+    // All firewall mutations flow through ReconcileAsync, which re-reads this map at apply time
+    // and drives Windows Firewall toward it. Combined with _fwGate serializing every COM call,
+    // this removes the orphaned-rule race: a clear updates the map (remove) under the lock, so any
+    // stale block still queued by the 100 ms tick is reconciled back to "absent" — it can never
+    // permanently re-add a rule the user just cleared.
+    private readonly Dictionary<string, (string exePath, int dir)> _wantBlocked =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _fwGate = new(1, 1);
+
     private class ThrottleState
     {
         public required string ImagePath    { get; set;  }   // resolved to running exe; updated on each SetXLimit call
@@ -116,51 +129,61 @@ public sealed class DownloadThrottler : IDisposable
     public void SetDownloadLimit(string imagePath, int kbps)
     {
         if (string.IsNullOrEmpty(imagePath)) return;
+        string? clearedRule = null;
         lock (_lock)
         {
             if (kbps <= 0)
             {
                 if (_byImagePath.TryGetValue(imagePath, out var st))
                 {
-                    if (st.CurrentlyBlockingDown) _ = RemoveBlockAsync(st.DownRuleName);
+                    clearedRule = st.DownRuleName;
+                    _wantBlocked.Remove(clearedRule);
                     st.DownloadLimitKbps     = 0;
                     st.CurrentlyBlockingDown = false;
                     if (st.UploadLimitKbps <= 0) _byImagePath.Remove(imagePath);
                 }
-                return;
             }
-            var s = GetOrCreate(imagePath);
-            var resolved               = _monitor.ResolveImagePath(imagePath);
-            s.ImagePath                = resolved;
-            s.DownloadLimitKbps        = kbps;
-            s.LastWindowRawBytesIn     = _monitor.GetRawBytesIn(resolved);
-            s.DownWindowStart          = DateTime.MinValue;
+            else
+            {
+                var s = GetOrCreate(imagePath);
+                var resolved               = _monitor.ResolveImagePath(imagePath);
+                s.ImagePath                = resolved;
+                s.DownloadLimitKbps        = kbps;
+                s.LastWindowRawBytesIn     = _monitor.GetRawBytesIn(resolved);
+                s.DownWindowStart          = DateTime.MinValue;
+            }
         }
+        if (clearedRule != null) _ = ReconcileAsync(new List<string> { clearedRule });
     }
 
     public void SetUploadLimit(string imagePath, int kbps)
     {
         if (string.IsNullOrEmpty(imagePath)) return;
+        string? clearedRule = null;
         lock (_lock)
         {
             if (kbps <= 0)
             {
                 if (_byImagePath.TryGetValue(imagePath, out var st))
                 {
-                    if (st.CurrentlyBlockingUp) _ = RemoveBlockAsync(st.UpRuleName);
+                    clearedRule = st.UpRuleName;
+                    _wantBlocked.Remove(clearedRule);
                     st.UploadLimitKbps     = 0;
                     st.CurrentlyBlockingUp = false;
                     if (st.DownloadLimitKbps <= 0) _byImagePath.Remove(imagePath);
                 }
-                return;
             }
-            var s = GetOrCreate(imagePath);
-            var resolved               = _monitor.ResolveImagePath(imagePath);
-            s.ImagePath                = resolved;
-            s.UploadLimitKbps          = kbps;
-            s.LastWindowRawBytesOut    = _monitor.GetRawBytesOut(resolved);
-            s.UpWindowStart            = DateTime.MinValue;
+            else
+            {
+                var s = GetOrCreate(imagePath);
+                var resolved               = _monitor.ResolveImagePath(imagePath);
+                s.ImagePath                = resolved;
+                s.UploadLimitKbps          = kbps;
+                s.LastWindowRawBytesOut    = _monitor.GetRawBytesOut(resolved);
+                s.UpWindowStart            = DateTime.MinValue;
+            }
         }
+        if (clearedRule != null) _ = ReconcileAsync(new List<string> { clearedRule });
     }
 
     public int GetDownloadLimit(string imagePath)
@@ -190,12 +213,14 @@ public sealed class DownloadThrottler : IDisposable
             _globalUploadCapKBps = kbps;
             if (kbps <= 0)
             {
-                // Collect any currently-active global-cap rules for removal
+                // Mark any currently-active global-cap rules as no-longer-wanted.
                 foreach (var (path, blocked) in _globalCapBlocked)
                     if (blocked)
                     {
+                        var rule = MakeRuleName(GlobalCapRulePrefix, path);
+                        _wantBlocked.Remove(rule);
                         toUnblock ??= new List<string>();
-                        toUnblock.Add(path);
+                        toUnblock.Add(rule);
                     }
                 _globalCapBlocked.Clear();
                 _globalPathLastBytes.Clear();
@@ -210,9 +235,7 @@ public sealed class DownloadThrottler : IDisposable
             }
         }
 
-        if (toUnblock != null)
-            foreach (var path in toUnblock)
-                _ = RemoveBlockAsync(MakeRuleName(GlobalCapRulePrefix, path));
+        if (toUnblock != null) _ = ReconcileAsync(toUnblock);
     }
 
     /// <summary>
@@ -263,7 +286,7 @@ public sealed class DownloadThrottler : IDisposable
 
     private void InnerTick()
     {
-        List<(string RuleName, string ExePath, int Dir, bool TurnOn)>? actions = null;
+        List<string>? dirty = null;
         var now = DateTime.UtcNow;
 
         // Snapshot per-path byte totals outside the lock (NetworkMonitor is thread-safe).
@@ -314,8 +337,8 @@ public sealed class DownloadThrottler : IDisposable
                         {
                             st.CurrentlyBlockingDown = true;
                             st.DownBlockHoldTicks    = BlockHoldTicks;
-                            actions ??= new();
-                            actions.Add((st.DownRuleName, st.ImagePath, NET_FW_RULE_DIR_IN, true));
+                            _wantBlocked[st.DownRuleName] = (st.ImagePath, NET_FW_RULE_DIR_IN);
+                            (dirty ??= new()).Add(st.DownRuleName);
                         }
                     }
                     else
@@ -324,8 +347,8 @@ public sealed class DownloadThrottler : IDisposable
                         if (st.DownBlockHoldTicks == 0 && st.DownTokenBucket >= 0)
                         {
                             st.CurrentlyBlockingDown = false;
-                            actions ??= new();
-                            actions.Add((st.DownRuleName, st.ImagePath, NET_FW_RULE_DIR_IN, false));
+                            _wantBlocked.Remove(st.DownRuleName);
+                            (dirty ??= new()).Add(st.DownRuleName);
                         }
                     }
                 }
@@ -359,8 +382,8 @@ public sealed class DownloadThrottler : IDisposable
                         {
                             st.CurrentlyBlockingUp = true;
                             st.UpBlockHoldTicks    = BlockHoldTicks;
-                            actions ??= new();
-                            actions.Add((st.UpRuleName, st.ImagePath, NET_FW_RULE_DIR_OUT, true));
+                            _wantBlocked[st.UpRuleName] = (st.ImagePath, NET_FW_RULE_DIR_OUT);
+                            (dirty ??= new()).Add(st.UpRuleName);
                         }
                     }
                     else
@@ -369,8 +392,8 @@ public sealed class DownloadThrottler : IDisposable
                         if (st.UpBlockHoldTicks == 0 && st.UpTokenBucket >= 0)
                         {
                             st.CurrentlyBlockingUp = false;
-                            actions ??= new();
-                            actions.Add((st.UpRuleName, st.ImagePath, NET_FW_RULE_DIR_OUT, false));
+                            _wantBlocked.Remove(st.UpRuleName);
+                            (dirty ??= new()).Add(st.UpRuleName);
                         }
                     }
                 }
@@ -419,15 +442,15 @@ public sealed class DownloadThrottler : IDisposable
                     if (wantGlobalBlock && pathDelta > kActiveThreshold && !wasBlocked)
                     {
                         string rn = MakeRuleName(GlobalCapRulePrefix, path);
-                        actions ??= new();
-                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, true));
+                        _wantBlocked[rn] = (path, NET_FW_RULE_DIR_OUT);
+                        (dirty ??= new()).Add(rn);
                         _globalCapBlocked[path] = true;
                     }
                     else if (!wantGlobalBlock && wasBlocked)
                     {
                         string rn = MakeRuleName(GlobalCapRulePrefix, path);
-                        actions ??= new();
-                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, false));
+                        _wantBlocked.Remove(rn);
+                        (dirty ??= new()).Add(rn);
                         _globalCapBlocked[path] = false;
                     }
                 }
@@ -438,20 +461,37 @@ public sealed class DownloadThrottler : IDisposable
                     if (_globalCapBlocked[path] && !pathSnapshot.ContainsKey(path))
                     {
                         string rn = MakeRuleName(GlobalCapRulePrefix, path);
-                        actions ??= new();
-                        actions.Add((rn, path, NET_FW_RULE_DIR_OUT, false));
+                        _wantBlocked.Remove(rn);
+                        (dirty ??= new()).Add(rn);
                         _globalCapBlocked[path] = false;
                     }
                 }
             }
         } // end lock
 
-        if (actions == null) return;
-        foreach (var (ruleName, exePath, dir, on) in actions)
+        if (dirty != null) _ = ReconcileAsync(dirty);
+    }
+
+    // ── Serialized firewall reconciler ────────────────────────────────────────
+    // Drives Windows Firewall toward _wantBlocked. Every rule named in <paramref name="ruleNames"/>
+    // is re-evaluated against the CURRENT desired state (not a captured delta) and added or removed
+    // accordingly. _fwGate serializes all COM access so a clear's removal can never race a stale add.
+    private async Task ReconcileAsync(List<string> ruleNames)
+    {
+        await _fwGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            if (on) _ = AddBlockAsync(ruleName, exePath, dir);
-            else    _ = RemoveBlockAsync(ruleName);
+            foreach (var rn in ruleNames)
+            {
+                bool wantPresent;
+                (string exePath, int dir) want;
+                lock (_lock) { wantPresent = _wantBlocked.TryGetValue(rn, out want); }
+
+                if (wantPresent) await AddBlockAsync(rn, want.exePath, want.dir).ConfigureAwait(false);
+                else             await RemoveBlockAsync(rn).ConfigureAwait(false);
+            }
         }
+        finally { _fwGate.Release(); }
     }
 
     // ── Mid-session path re-routing ───────────────────────────────────────────
@@ -546,16 +586,16 @@ public sealed class DownloadThrottler : IDisposable
     /// </summary>
     public async Task<bool> ClearAndVerifyAsync(string imagePath, bool clearDown, bool clearUp)
     {
-        // Always remove by rule name regardless of in-memory state — this also handles
-        // stale rules left by a previous session.  App restart resets CurrentlyBlocking*
-        // to false, but Windows Firewall rules survive reboots on disk.
-        Task<bool>? downTask = clearDown
-            ? RemoveBlockAsync(MakeRuleName(ThrottleRulePrefix,   imagePath)) : null;
-        Task<bool>? upTask   = clearUp
-            ? RemoveBlockAsync(MakeRuleName(UpThrottleRulePrefix, imagePath)) : null;
-
+        // Mark the rules as no-longer-wanted under the lock BEFORE reconciling, so any block the
+        // 100 ms tick still has queued is reconciled back to "absent". Rule names are derived even
+        // when no in-memory state exists, so this also clears stale rules left by a prior session.
+        var names = new List<string>(2);
+        string downRule = MakeRuleName(ThrottleRulePrefix,   imagePath);
+        string upRule   = MakeRuleName(UpThrottleRulePrefix, imagePath);
         lock (_lock)
         {
+            if (clearDown) { _wantBlocked.Remove(downRule); names.Add(downRule); }
+            if (clearUp)   { _wantBlocked.Remove(upRule);   names.Add(upRule); }
             if (_byImagePath.TryGetValue(imagePath, out var st))
             {
                 if (clearDown) { st.DownloadLimitKbps = 0; st.CurrentlyBlockingDown = false; }
@@ -565,8 +605,7 @@ public sealed class DownloadThrottler : IDisposable
             }
         }
 
-        if (downTask != null) await downTask;
-        if (upTask   != null) await upTask;
+        await ReconcileAsync(names);
 
         return await VerifyRuleAbsentAsync(imagePath, clearDown, clearUp);
     }
@@ -623,5 +662,6 @@ public sealed class DownloadThrottler : IDisposable
         if (_disposed) return;
         _disposed = true;
         _innerTimer.Dispose();
+        _fwGate.Dispose();
     }
 }
