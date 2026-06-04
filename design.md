@@ -13,9 +13,9 @@
 
 | Action | Windows feature used | Where it lives | How we reverse it |
 |---|---|---|---|
-| Block an app | Defender Firewall rule (`New-NetFirewallRule`) | Windows Firewall config | `Remove-NetFirewallRule -DisplayName "Bansa-*"` |
-| Limit an app's bandwidth | QoS Policy (`New-NetQosPolicy`) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` | `Remove-NetQosPolicy -Name "Bansa-*"` |
-| Prioritize game traffic | QoS Policy with DSCP value | Same as above | Same as above |
+| Block an app | Defender Firewall rule (`HNetCfg.FwPolicy2` COM) | Windows Firewall config | `Remove-NetFirewallRule -DisplayName "Bansa-*"` |
+| Limit an app's bandwidth (up/down) | Pulsed Defender Firewall rules (token-bucket, ~10 Hz) | Windows Firewall config | Remove `Bansa-Throttle-*` / `Bansa-UpThrottle-*` rules |
+| Global upload cap | QoS Group Policy (soft) + pulsed firewall rules (hard) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` + Firewall config | `Remove-NetQosPolicy -Name "Bansa-*"` + remove `Bansa-GlobalCap-*` rules |
 | Read process bandwidth | ETW kernel session (read-only) | Memory only | Session ends when Bansa exits |
 | Read active connections | `GetExtendedTcpTable` / `GetExtendedUdpTable` | Read-only API call | No state created |
 | Register auto-start task | Windows Task Scheduler (`schtasks.exe`) | Task Scheduler, task name `Bansa_BandwidthMonitor_AutoStart` | Toggle off in Settings → General, or `schtasks /delete /tn "Bansa_BandwidthMonitor_AutoStart" /f` |
@@ -31,15 +31,18 @@ That's the complete list. Nothing else gets written to disk, the registry, or th
 |        Bansa.exe          |   single WPF app, admin elevated
 +--------------------------+
 |  UI (WPF MVVM)           |
-|  - ProcessListView       |
-|  - HistoryView           |
-|  - SettingsView          |
+|  - MainWindow + panels   |   Dashboard · Network · Hardware · Tools · History · Settings
+|  - FloatingGraphWindow   |
+|  - TrayIconManager       |   tray icon + TrayPopupWindow
 +--------------------------+
 |  Services                |
 |  - NetworkMonitor (ETW)  |
 |  - ProcessEnumerator     |
-|  - FirewallManager       |   <-> netsh / New-NetFirewallRule
-|  - QosManager            |   <-> New-NetQosPolicy
+|  - FirewallManager       |   <-> HNetCfg.FwPolicy2 (COM)
+|  - DownloadThrottler     |   <-> pulsed firewall rules (up/down/global cap)
+|  - QosManager            |   <-> QoS Group Policy registry
+|  - HardwareMonitor       |   <-> LibreHardwareMonitor
+|  - PingMonitor / SpeedTester
 |  - HistoryStore (SQLite) |
 |  - CleanupManager        |
 +--------------------------+
@@ -61,13 +64,14 @@ No background service. No driver. No IPC layer needed (everything runs in one pr
 - **Delayed priority mode.** No equivalent without a driver. We can fake it via rate limit + low DSCP value.
 - **Deep packet inspection.** Not feasible from user-mode. Out of scope.
 
-## Feature status (v0.5)
+## Feature status (v0.8)
 
 - ✅ Live process list with up/down rate and connection counts
 - ✅ Double-click to see individual processes and connections
-- ✅ Right-click → Block / Limit / Unblock / Remove limits
+- ✅ Right-click → Set limits / Quick profile / Clear limits / Block / Unblock
 - ✅ History tab with date-range totals per app + activity log
-- ✅ Gaming Mode — global upload cap + DSCP prioritization
+- ✅ Gaming Mode — a saved set of per-app up/down limits toggled on/off together
+- ✅ Global Upload Cap — system-wide outbound cap (QoS soft cap + pulsed-firewall hard cap)
 - ✅ Settings with one-click "Clean up & remove all Bansa changes"
 - ✅ Tray icon with live rates, hover popup, ping indicator
 - ✅ Hardware monitor panel (CPU / GPU / RAM temps, loads, clocks)

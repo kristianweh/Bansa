@@ -7,13 +7,16 @@ Every system change Bansa makes, where it lives, and how it gets undone. If this
 | 1 | ETW kernel session `Bansa-KernelNetSession` | `NetworkMonitor.Start()` | Kernel memory only | `NetworkMonitor.Stop()` on app exit; `StopOnDispose=true` as safety; orphan-cleanup at next startup; manual `logman stop Bansa-KernelNetSession -ets` |
 | 2 | Defender Firewall rule `Bansa-Block-<name>-In` | `FirewallManager.BlockAppAsync` | Windows Defender Firewall config | `FirewallManager.UnblockAppAsync` (per app) or `FirewallManager.RemoveAllBansaRulesAsync` (all). Also visible in Defender Firewall UI for manual removal. |
 | 3 | Defender Firewall rule `Bansa-Block-<name>-Out` | Same | Same | Same |
-| 4 | QoS Policy `Bansa-Qos-<name>-limit` | `QosManager.SetUploadLimitAsync` | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` (Windows-managed) | Set limit to 0 (per app) or `QosManager.RemoveAllBansaPoliciesAsync` (all) |
-| 5 | QoS Policy `Bansa-Qos-<name>-dscp` | `QosManager.SetDscpAsync` | Same | Same |
-| 6 | Scheduled task `Bansa_BandwidthMonitor_AutoStart` | `AutoStartManager.SetAsync(true)` | Windows Task Scheduler | `AutoStartManager.SetAsync(false)` (toggle in Settings → General → Behavior) or `schtasks /delete /tn "Bansa_BandwidthMonitor_AutoStart" /f` |
-| 7 | SQLite history db | `HistoryStore` ctor | `%LocalAppData%\Bansa\bansa.db` | Delete the folder |
-| 8 | Crash log | `App.OnAppDomainUnhandledException` | `%LocalAppData%\Bansa\crash.log` | Delete the folder |
+| 4 | Download-throttle firewall rule `Bansa-Throttle-<name>` (inbound, pulsed on/off) | `DownloadThrottler` 100 ms tick | Windows Defender Firewall config | `DownloadThrottler.ClearAndVerifyAsync` (per app) or `DownloadThrottler.RemoveAllAsync` (all). Removed on app exit. |
+| 5 | Upload-throttle firewall rule `Bansa-UpThrottle-<name>` (outbound, pulsed) | Same | Same | Same |
+| 6 | Global-cap firewall rule `Bansa-GlobalCap-<name>` (outbound, pulsed) | Same — hard layer of the global upload cap | Same | Set cap to 0, or `DownloadThrottler.RemoveAllAsync`. Removed on app exit. |
+| 7 | QoS Policy `Bansa-Qos-Global-Upload` (soft layer of the global upload cap) | `QosManager.SetGlobalUploadCapAsync` | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` (Windows-managed) | Set cap to 0, or `QosManager.RemoveAllBansaPoliciesAsync` (all) |
+| 8 | Scheduled task `Bansa_BandwidthMonitor_AutoStart` | `AutoStartManager.SetAsync(true)` | Windows Task Scheduler | `AutoStartManager.SetAsync(false)` (toggle in Settings → General → Behavior) or `schtasks /delete /tn "Bansa_BandwidthMonitor_AutoStart" /f` |
+| 9 | SQLite history db | `HistoryStore` ctor | `%LocalAppData%\Bansa\bansa.db` | Delete the folder |
+| 10 | Crash log | `App.OnAppDomainUnhandledException` | `%LocalAppData%\Bansa\crash.log` | Delete the folder |
 
 That's the complete list of writable state Bansa touches. Nothing is written outside of these paths.
+All firewall rules (block + throttle + global-cap) and the QoS policy are torn down together by `CleanupManager.RunAsync`, the in-app Cleanup button, and `Uninstall-Bansa.ps1`.
 
 ## Three independent paths to a clean system
 

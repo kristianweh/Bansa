@@ -2,7 +2,7 @@
 
 A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
-> **Status:** v0.7 — personal use, no commercial intent.
+> **Status:** v0.8 — personal use, no commercial intent.
 
 ---
 
@@ -64,14 +64,18 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 
 **Controls (per app, all reversible)**
 - **Block** — adds a Defender Firewall rule named `Bansa-Block-<app>`.
-- **Upload limit** — exact rate cap via Windows QoS Policy (`Bansa-Qos-<app>-limit`).
-- **Download limit** — best-effort throttling via inbound monitor + temporary firewall block.
-- **High-priority mark** — DSCP 46 (Expedited Forwarding) for games/voice.
+- **Upload limit** — best-effort throttling via outbound monitor + pulsed firewall block (`Bansa-UpThrottle-<app>`).
+- **Download limit** — best-effort throttling via inbound monitor + pulsed firewall block (`Bansa-Throttle-<app>`).
 - **Limit profiles** — named presets (e.g., "Gaming", "Backup") for quick reuse. Right-click any app → **Quick profile** to apply a profile in one step. Edit profiles in Settings → Network.
 
 **Gaming Mode**
-- Global upload cap applied system-wide — keeps bufferbloat from degrading latency while uploading.
-- **Two enforcement layers:** QoS Group Policy (zero-overhead, handles new connections) + pulsed firewall rules (catches existing connections, UDP traffic, and anything QoS misses). Toggle from the Network tab or the sidebar button.
+- A saved set of **per-app** upload/download limits that toggle on and off together with one click (sidebar card or Dashboard card).
+- Intended to throttle background apps (Spotify, Discord, cloud sync) so they don't compete with your game. Apps not listed are unaffected.
+- When you turn it off, each app's previous (non-gaming) limit is restored. Configure the per-app entries in **Settings → Gaming Mode**.
+
+**Global Upload Cap**
+- A separate, system-wide outbound cap — keeps bufferbloat from degrading latency while uploading.
+- **Two enforcement layers:** QoS Group Policy (zero-overhead, handles new connections) + pulsed firewall rules (catches existing connections, UDP traffic, and anything QoS misses). Set it from the Network tab.
 
 **History tab**
 - Total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom).
@@ -84,10 +88,12 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Website button opens the download page when a tool isn't installed yet.
 
 **Settings**
-- *General* — units, global hotkey, startup & window behavior, settings backup (export/import), system cleanup.
+Four tabs — *General · Network · Gaming Mode · Appearance*:
+
+- *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup.
 - *Network* — limit profiles (add / edit / delete / quick-apply), global upload cap, ISP connection speed, ping monitor targets.
+- *Gaming Mode* — per-app upload/download limits applied together when Gaming Mode is toggled on.
 - *Appearance* — dark/light theme, Windows accent color; separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
-- *Behavior* — minimize on close, start minimized to tray, show/hide tray icon.
 
 ---
 

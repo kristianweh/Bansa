@@ -28,7 +28,8 @@ Desktop.ini
 *.db
 *.db-wal
 *.db-shm
-flow.log
+crash.log
 
 # Local research / scratch notes (not for distribution)
 research/
+Bansa Logo/Research/
