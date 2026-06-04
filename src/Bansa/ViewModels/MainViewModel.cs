@@ -382,17 +382,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (wasInvisible && (row.BytesInPerSec > 0 || row.TotalBytesIn > 0 || row.TotalBytesOut > 0))
                         _needsFilterRefresh = true;
 
-                    // Live throttle-active indicator: poll the throttler so the badge
-                    // turns amber while the block rule is actually firing (≤500 ms lag).
+                    // Download badge: poll the throttler so it turns amber while the firewall
+                    // block is actually firing (≤500 ms lag).
                     if (row.DownloadLimitKbps > 0)
                         row.IsThrottlingDown = _downloadThrottler.IsActivelyThrottlingDown(row.ImagePath);
                     else if (row.IsThrottlingDown)
                         row.IsThrottlingDown = false;
 
-                    if (row.UploadLimitKbps > 0)
-                        row.IsThrottlingUp = _downloadThrottler.IsActivelyThrottlingUp(row.ImagePath);
-                    else if (row.IsThrottlingUp)
-                        row.IsThrottlingUp = false;
+                    // Upload badge: QoS gives no enforcement feedback, so derive effectiveness from
+                    // the measured rate vs the limit (amber = exceeding cap = not enforced yet).
+                    row.UpdateUploadCapEffectiveness();
 
                     // Classify local-only: all observed connections go to loopback / RFC-1918
                     var allConns = g.SelectMany(p => p.Connections).ToList();
@@ -784,8 +783,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            // Upload: outbound firewall toggle — applies to existing connections immediately,
-            // unlike QoS which only classifies new sockets at creation time.
+            // Upload: smooth QoS shaping (no connection drops). QoS classifies sockets at
+            // creation, so an existing connection stays uncapped until it reconnects — the
+            // row's IsUploadCapExceeded badge surfaces that to the user.
             _downloadThrottler.SetUploadLimit(app.ImagePath, up);
             app.UploadLimitKbps = up;
             App.Settings.AppUploadLimitsKBs[key] = up;

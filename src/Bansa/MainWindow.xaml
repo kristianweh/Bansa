@@ -818,9 +818,9 @@
                                                             Visibility="{Binding IsBlocked, Converter={StaticResource BoolToVis}}">
                                                         <TextBlock Text="Blocked" Foreground="{DynamicResource DangerBrush}" FontSize="10" FontWeight="SemiBold" />
                                                     </Border>
-                                                    <!-- Upload limit badge: green at rest, amber while throttling -->
+                                                    <!-- Upload limit badge (smooth QoS cap): green = holding, amber = exceeding the cap -->
                                                     <Border CornerRadius="3" Padding="5,1" Margin="0,0,3,0"
-                                                            ToolTip="Upload limit set. Turns amber while the firewall rule is actively enforcing.">
+                                                            ToolTip="Upload limit (smooth QoS cap). Green = holding. Amber = the app is exceeding it — QoS caps new connections, so it takes effect when the app reconnects (or restart the app).">
                                                         <Border.Style>
                                                             <Style TargetType="Border">
                                                                 <Setter Property="Visibility" Value="Visible" />
@@ -829,7 +829,7 @@
                                                                     <DataTrigger Binding="{Binding UploadLimitKbps}" Value="0">
                                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                                     </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding IsThrottlingUp}" Value="True">
+                                                                    <DataTrigger Binding="{Binding IsUploadCapExceeded}" Value="True">
                                                                         <Setter Property="Background" Value="#33F59E0B" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
@@ -840,7 +840,7 @@
                                                                 <Style TargetType="TextBlock">
                                                                     <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                                     <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsThrottlingUp}" Value="True">
+                                                                        <DataTrigger Binding="{Binding IsUploadCapExceeded}" Value="True">
                                                                             <Setter Property="Foreground" Value="#F59E0B" />
                                                                         </DataTrigger>
                                                                     </Style.Triggers>
@@ -1219,9 +1219,9 @@
                                                         Visibility="{Binding IsBlocked, Converter={StaticResource BoolToVis}}">
                                                     <TextBlock Text="Blocked" Foreground="{DynamicResource DangerBrush}" FontSize="10" FontWeight="SemiBold" />
                                                 </Border>
-                                                <!-- Upload limit badge: green at rest, amber when block rule is firing -->
+                                                <!-- Upload limit badge (smooth QoS cap): green = holding, amber = exceeding the cap -->
                                                 <Border CornerRadius="3" Padding="6,2" Margin="0,0,4,0"
-                                                        ToolTip="Upload limit set. Badge turns amber while the block rule is actively enforcing the cap.">
+                                                        ToolTip="Upload limit (smooth QoS cap). Green = holding. Amber = the app is exceeding it — QoS caps new connections, so it takes effect when the app reconnects (or restart the app).">
                                                     <Border.Style>
                                                         <Style TargetType="Border">
                                                             <Setter Property="Visibility" Value="Visible" />
@@ -1230,7 +1230,7 @@
                                                                 <DataTrigger Binding="{Binding UploadLimitKbps}" Value="0">
                                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                                 </DataTrigger>
-                                                                <DataTrigger Binding="{Binding IsThrottlingUp}" Value="True">
+                                                                <DataTrigger Binding="{Binding IsUploadCapExceeded}" Value="True">
                                                                     <Setter Property="Background" Value="#33F59E0B" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
@@ -1241,7 +1241,7 @@
                                                             <Style TargetType="TextBlock">
                                                                 <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsThrottlingUp}" Value="True">
+                                                                    <DataTrigger Binding="{Binding IsUploadCapExceeded}" Value="True">
                                                                         <Setter Property="Foreground" Value="#F59E0B" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>

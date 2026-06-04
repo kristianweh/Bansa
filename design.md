@@ -14,7 +14,8 @@
 | Action | Windows feature used | Where it lives | How we reverse it |
 |---|---|---|---|
 | Block an app | Defender Firewall rule (`HNetCfg.FwPolicy2` COM) | Windows Firewall config | `Remove-NetFirewallRule -DisplayName "Bansa-*"` |
-| Limit an app's bandwidth (up/down) | Pulsed Defender Firewall rules (token-bucket, ~10 Hz) | Windows Firewall config | Remove `Bansa-Throttle-*` / `Bansa-UpThrottle-*` rules |
+| Limit an app's **download** | Pulsed Defender Firewall rule (token-bucket, ~10 Hz) | Windows Firewall config | Remove `Bansa-Throttle-*` rules |
+| Limit an app's **upload** | QoS Policy (smooth kernel-level shaping via ms_pacer) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` | Remove `Bansa-Qos-<app>-limit` policy |
 | Global upload cap | QoS Group Policy (soft) + pulsed firewall rules (hard) | `HKLM\SOFTWARE\Policies\Microsoft\Windows\QoS\` + Firewall config | `Remove-NetQosPolicy -Name "Bansa-*"` + remove `Bansa-GlobalCap-*` rules |
 | Read process bandwidth | ETW kernel session (read-only) | Memory only | Session ends when Bansa exits |
 | Read active connections | `GetExtendedTcpTable` / `GetExtendedUdpTable` | Read-only API call | No state created |

@@ -96,26 +96,17 @@ public sealed class DownloadThrottler : IDisposable
     {
         public required string ImagePath    { get; set;  }   // resolved to running exe; updated on each SetXLimit call
         public required string DownRuleName { get; init; }
-        public required string UpRuleName   { get; init; }
 
         public int DownloadLimitKbps;
-        public int UploadLimitKbps;
+        public int UploadLimitKbps;          // enforced via QoS smooth shaping (QosManager), not firewall
 
-        // Download (inbound block)
+        // Download (inbound block — pulsed firewall; QoS cannot shape inbound traffic)
         public long     LastWindowRawBytesIn;
         public long     DownTokenBucket;
         public DateTime DownWindowStart = DateTime.MinValue;
         public bool     CurrentlyBlockingDown;
         public int      DownBlockHoldTicks;  // remaining ticks to hold the block before considering unblock
         public int      DownIdleWindows;     // consecutive 100 ms windows with zero received bytes
-
-        // Upload (outbound block)
-        public long     LastWindowRawBytesOut;
-        public long     UpTokenBucket;
-        public DateTime UpWindowStart = DateTime.MinValue;
-        public bool     CurrentlyBlockingUp;
-        public int      UpBlockHoldTicks;    // remaining ticks to hold the block before considering unblock
-        public int      UpIdleWindows;       // consecutive 100 ms windows with zero sent bytes
     }
 
     public DownloadThrottler(NetworkMonitor monitor)
@@ -156,34 +147,39 @@ public sealed class DownloadThrottler : IDisposable
         if (clearedRule != null) _ = ReconcileAsync(new List<string> { clearedRule });
     }
 
+    /// <summary>
+    /// Per-app upload limit via Windows QoS smooth shaping (ms_pacer), NOT firewall pulsing.
+    /// QoS classifies sockets at creation, so it caps NEW connections without ever dropping
+    /// a connection — the right tool for interactive apps. The tradeoff: an already-open
+    /// connection stays uncapped until it reconnects. The UI surfaces that via a rate-vs-limit
+    /// "cap exceeded" indicator (AppRowViewModel.IsUploadCapExceeded). kbps = 0 removes the policy.
+    /// </summary>
     public void SetUploadLimit(string imagePath, int kbps)
     {
         if (string.IsNullOrEmpty(imagePath)) return;
-        string? clearedRule = null;
+        string qosPath;
         lock (_lock)
         {
             if (kbps <= 0)
             {
                 if (_byImagePath.TryGetValue(imagePath, out var st))
                 {
-                    clearedRule = st.UpRuleName;
-                    _wantBlocked.Remove(clearedRule);
-                    st.UploadLimitKbps     = 0;
-                    st.CurrentlyBlockingUp = false;
+                    qosPath            = st.ImagePath;
+                    st.UploadLimitKbps = 0;
                     if (st.DownloadLimitKbps <= 0) _byImagePath.Remove(imagePath);
                 }
+                else qosPath = imagePath;
             }
             else
             {
-                var s = GetOrCreate(imagePath);
-                var resolved               = _monitor.ResolveImagePath(imagePath);
-                s.ImagePath                = resolved;
-                s.UploadLimitKbps          = kbps;
-                s.LastWindowRawBytesOut    = _monitor.GetRawBytesOut(resolved);
-                s.UpWindowStart            = DateTime.MinValue;
+                var s              = GetOrCreate(imagePath);
+                var resolved       = _monitor.ResolveImagePath(imagePath);
+                s.ImagePath        = resolved;
+                s.UploadLimitKbps  = kbps;
+                qosPath            = resolved;
             }
         }
-        if (clearedRule != null) _ = ReconcileAsync(new List<string> { clearedRule });
+        _ = QosManager.SetUploadLimitAsync(qosPath, kbps);
     }
 
     public int GetDownloadLimit(string imagePath)
@@ -255,18 +251,6 @@ public sealed class DownloadThrottler : IDisposable
         }
     }
 
-    /// <summary>Returns true when the outbound block rule for this app is currently ACTIVE.</summary>
-    public bool IsActivelyThrottlingUp(string imagePath)
-    {
-        lock (_lock)
-        {
-            foreach (var st in _byImagePath.Values)
-                if (string.Equals(st.ImagePath, imagePath, StringComparison.OrdinalIgnoreCase))
-                    return st.CurrentlyBlockingUp;
-            return false;
-        }
-    }
-
     private ThrottleState GetOrCreate(string imagePath)
     {
         if (!_byImagePath.TryGetValue(imagePath, out var s))
@@ -274,8 +258,7 @@ public sealed class DownloadThrottler : IDisposable
             s = new ThrottleState
             {
                 ImagePath    = imagePath,
-                DownRuleName = MakeRuleName(ThrottleRulePrefix,   imagePath),
-                UpRuleName   = MakeRuleName(UpThrottleRulePrefix, imagePath),
+                DownRuleName = MakeRuleName(ThrottleRulePrefix, imagePath),
             };
             _byImagePath[imagePath] = s;
         }
@@ -353,50 +336,7 @@ public sealed class DownloadThrottler : IDisposable
                     }
                 }
 
-                // ── Upload (outbound) ────────────────────────────────────────
-                if (st.UploadLimitKbps > 0)
-                {
-                    long limitBytes = (long)st.UploadLimitKbps * 1024 / 10;
-
-                    if ((now - st.UpWindowStart).TotalMilliseconds >= 100)
-                    {
-                        long cur  = _monitor.GetRawBytesOut(st.ImagePath);
-                        long sent = Math.Max(0, cur - st.LastWindowRawBytesOut);
-                        st.LastWindowRawBytesOut = cur;
-                        st.UpWindowStart         = now;
-
-                        if (sent == 0)
-                        {
-                            if (++st.UpIdleWindows >= 300) { TryReroutePath(st); st.UpIdleWindows = 0; }
-                        }
-                        else st.UpIdleWindows = 0;
-
-                        // Same carry-over debt logic as download.
-                        st.UpTokenBucket = Math.Min(st.UpTokenBucket + limitBytes - sent, limitBytes);
-                    }
-
-                    // Same hysteresis as download.
-                    if (!st.CurrentlyBlockingUp)
-                    {
-                        if (st.UpTokenBucket < -(limitBytes / BlockDebtDivisor))
-                        {
-                            st.CurrentlyBlockingUp = true;
-                            st.UpBlockHoldTicks    = BlockHoldTicks;
-                            _wantBlocked[st.UpRuleName] = (st.ImagePath, NET_FW_RULE_DIR_OUT);
-                            (dirty ??= new()).Add(st.UpRuleName);
-                        }
-                    }
-                    else
-                    {
-                        if (st.UpBlockHoldTicks > 0) st.UpBlockHoldTicks--;
-                        if (st.UpBlockHoldTicks == 0 && st.UpTokenBucket >= 0)
-                        {
-                            st.CurrentlyBlockingUp = false;
-                            _wantBlocked.Remove(st.UpRuleName);
-                            (dirty ??= new()).Add(st.UpRuleName);
-                        }
-                    }
-                }
+                // Per-app UPLOAD limits are enforced by QoS (see SetUploadLimit), not here.
             }
 
             // ── Global upload cap (hard enforcement layer) ───────────────────
@@ -509,14 +449,11 @@ public sealed class DownloadThrottler : IDisposable
 
         System.Diagnostics.Debug.WriteLine(
             $"DownloadThrottler: rerouted '{st.DownRuleName}' → '{newPath}'");
-        st.ImagePath            = newPath;
-        st.LastWindowRawBytesIn  = _monitor.GetRawBytesIn(newPath);
-        st.LastWindowRawBytesOut = _monitor.GetRawBytesOut(newPath);
-        st.DownWindowStart      = DateTime.MinValue;
-        st.UpWindowStart        = DateTime.MinValue;
-        // Reset idle counters so we don't immediately re-check
+        st.ImagePath           = newPath;
+        st.LastWindowRawBytesIn = _monitor.GetRawBytesIn(newPath);
+        st.DownWindowStart     = DateTime.MinValue;
+        // Reset idle counter so we don't immediately re-check
         st.DownIdleWindows = 0;
-        st.UpIdleWindows   = 0;
     }
 
     // ── Firewall helpers (Windows Firewall COM API) ───────────────────────────
@@ -580,15 +517,17 @@ public sealed class DownloadThrottler : IDisposable
         });
 
     /// <summary>
-    /// Clears in-memory limit state, awaits any active block-rule removals, then queries
-    /// Windows Firewall to confirm the rules are actually gone. Returns true if verified
-    /// absent; false if a rule is still present or the COM call failed.
+    /// Clears in-memory limit state, removes the download firewall rule (and the QoS upload
+    /// policy), then queries Windows Firewall to confirm the rules are gone. Returns true if
+    /// verified absent; false if a rule is still present or the COM call failed.
     /// </summary>
     public async Task<bool> ClearAndVerifyAsync(string imagePath, bool clearDown, bool clearUp)
     {
         // Mark the rules as no-longer-wanted under the lock BEFORE reconciling, so any block the
         // 100 ms tick still has queued is reconciled back to "absent". Rule names are derived even
         // when no in-memory state exists, so this also clears stale rules left by a prior session.
+        // The upload rule name is still swept to remove legacy Bansa-UpThrottle-* rules from
+        // versions before upload moved to QoS.
         var names = new List<string>(2);
         string downRule = MakeRuleName(ThrottleRulePrefix,   imagePath);
         string upRule   = MakeRuleName(UpThrottleRulePrefix, imagePath);
@@ -599,13 +538,14 @@ public sealed class DownloadThrottler : IDisposable
             if (_byImagePath.TryGetValue(imagePath, out var st))
             {
                 if (clearDown) { st.DownloadLimitKbps = 0; st.CurrentlyBlockingDown = false; }
-                if (clearUp)   { st.UploadLimitKbps   = 0; st.CurrentlyBlockingUp   = false; }
+                if (clearUp)   { st.UploadLimitKbps   = 0; }
                 if (st.DownloadLimitKbps <= 0 && st.UploadLimitKbps <= 0)
                     _byImagePath.Remove(imagePath);
             }
         }
 
         await ReconcileAsync(names);
+        if (clearUp) await QosManager.SetUploadLimitAsync(imagePath, 0);
 
         return await VerifyRuleAbsentAsync(imagePath, clearDown, clearUp);
     }

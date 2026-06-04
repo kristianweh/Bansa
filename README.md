@@ -64,8 +64,8 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 
 **Controls (per app, all reversible)**
 - **Block** — adds a Defender Firewall rule named `Bansa-Block-<app>`.
-- **Upload limit** — best-effort throttling via outbound monitor + pulsed firewall block (`Bansa-UpThrottle-<app>`).
-- **Download limit** — best-effort throttling via inbound monitor + pulsed firewall block (`Bansa-Throttle-<app>`).
+- **Upload limit** — smooth kernel-level rate shaping via Windows QoS Policy (`Bansa-Qos-<app>-limit`). No connection drops; takes effect on the app's next connection (the badge goes amber while an existing connection is still over the cap).
+- **Download limit** — best-effort throttling via inbound monitor + pulsed firewall block (`Bansa-Throttle-<app>`); Windows has no smooth user-mode way to rate-limit inbound traffic.
 - **Limit profiles** — named presets (e.g., "Gaming", "Backup") for quick reuse. Right-click any app → **Quick profile** to apply a profile in one step. Edit profiles in Settings → Network.
 
 **Gaming Mode**

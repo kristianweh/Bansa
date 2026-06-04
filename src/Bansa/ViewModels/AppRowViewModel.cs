@@ -32,9 +32,9 @@ public partial class AppRowViewModel : ObservableObject
     [ObservableProperty] private string hourlyDownText = "";
     [ObservableProperty] private string hourlyUpText   = "";
     [ObservableProperty] private bool isLocalOnly;     // all connections to loopback / RFC-1918
-    [ObservableProperty] private bool isThrottlingDown;   // download block rule currently active
-    [ObservableProperty] private bool isThrottlingUp;     // upload block rule currently active
-    [ObservableProperty] private bool hasUdpConnections;  // any active external UDP socket — warn on upload limit
+    [ObservableProperty] private bool isThrottlingDown;     // download firewall block currently active
+    [ObservableProperty] private bool isUploadCapExceeded;  // upload limit set but measured rate exceeds it (QoS not yet effective)
+    [ObservableProperty] private bool hasUdpConnections;    // any active external UDP socket — warn on upload limit
 
     public string HourlyTooltip =>
         string.IsNullOrEmpty(HourlyDownText)
@@ -158,6 +158,30 @@ public partial class AppRowViewModel : ObservableObject
         OnPropertyChanged(nameof(UploadLimitText));
         OnPropertyChanged(nameof(DownloadLimitText));
         foreach (var p in Processes) p.RefreshUnits();
+    }
+
+    // ── Upload-cap (QoS) effectiveness ──────────────────────────────────────────
+    // QoS smooth shaping only caps NEW sockets, so a connection open before the limit was set
+    // keeps running uncapped until it reconnects — and the kernel gives no feedback. We infer
+    // effectiveness from the measured upload rate: a sustained overage means the cap isn't biting
+    // yet (the badge goes amber → "applies on reconnect"). Several consecutive over-limit samples
+    // (~2 s at 500 ms/tick) are required so a brief burst doesn't flicker the badge.
+    private int _upOverCapSamples;
+    public void UpdateUploadCapEffectiveness()
+    {
+        if (UploadLimitKbps <= 0)
+        {
+            _upOverCapSamples = 0;
+            if (IsUploadCapExceeded) IsUploadCapExceeded = false;
+            return;
+        }
+        long limitBytesPerSec = (long)UploadLimitKbps * 1024;
+        // 1.25× tolerance absorbs QoS pacing + measurement jitter so a working cap reads as fine.
+        bool over = BytesOutPerSec > limitBytesPerSec * 5 / 4;
+        if (over) { if (_upOverCapSamples < 6) _upOverCapSamples++; }
+        else      _upOverCapSamples = 0;
+        bool notEffective = _upOverCapSamples >= 4;
+        if (IsUploadCapExceeded != notEffective) IsUploadCapExceeded = notEffective;
     }
 
     public void UpdateFromChildren(IReadOnlyList<ProcessRowViewModel> children)
