@@ -76,6 +76,7 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 **Global Upload Cap**
 - A separate, system-wide outbound cap — keeps bufferbloat from degrading latency while uploading.
 - **Two enforcement layers:** QoS Group Policy (zero-overhead, handles new connections) + pulsed firewall rules (catches existing connections, UDP traffic, and anything QoS misses). Set it from the Network tab.
+- An **enable/disable switch** pauses the cap without discarding the configured value, so you can drop it for a big upload and switch it back on afterward.
 
 **History tab**
 - Total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom).

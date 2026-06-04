@@ -62,6 +62,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int trayIconSize;
     [ObservableProperty] private bool useWindowsAccent;
     [ObservableProperty] private int globalUploadCapKBs;
+    [ObservableProperty] private bool isGlobalUploadCapEnabled;
     [ObservableProperty] private bool isGamingModeActive;
     [ObservableProperty] private bool showFloatingGraph;
     [ObservableProperty] private AppRowViewModel? selectedApp;
@@ -145,6 +146,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         TrayIconSize = App.Settings.TrayIconSize;
         UseWindowsAccent = App.Settings.UseWindowsAccent;
         GlobalUploadCapKBs = App.Settings.GlobalUploadCapKBs;
+        // Set the backing field directly so the OnChanged handler doesn't apply the cap during
+        // construction — the startup block below owns the initial apply.
+        isGlobalUploadCapEnabled = App.Settings.GlobalUploadCapEnabled;
         IsGamingModeActive = App.Settings.GamingModeActive;
         ShowFloatingGraph  = App.Settings.ShowFloatingGraph;
         HideLocalOnlyApps  = App.Settings.HideLocalOnlyApps;
@@ -169,7 +173,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Re-apply global upload cap from previous session (standalone — independent of Gaming Mode).
-        if (App.Settings.GlobalUploadCapKBs > 0)
+        if (App.Settings.GlobalUploadCapEnabled && App.Settings.GlobalUploadCapKBs > 0)
         {
             _ = Task.Run(async () =>
             {
@@ -555,9 +559,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ApplyGlobalUploadCapAsync()
     {
+        if (GlobalUploadCapKBs <= 0)
+        {
+            StatusText = "Enter an upload cap value (KB/s) first, then Apply.";
+            return;
+        }
+        // "Apply" turns the cap on at the current value. If it's already on, push the edited value.
+        if (!IsGlobalUploadCapEnabled)
+            IsGlobalUploadCapEnabled = true;   // OnChanged applies the cap
+        else
+            await ApplyGlobalCapAsync(GlobalUploadCapKBs);
+    }
+
+    partial void OnIsGlobalUploadCapEnabledChanged(bool value)
+    {
+        App.Settings.GlobalUploadCapEnabled = value;
+        SettingsManager.Save(App.Settings);
+        _ = ApplyGlobalCapAsync(value ? GlobalUploadCapKBs : 0);
+    }
+
+    /// <summary>
+    /// Applies (kbps &gt; 0) or removes (kbps = 0) the global upload cap across both enforcement
+    /// layers. Shared by the Apply command, the enable/disable toggle, and Clear.
+    /// </summary>
+    private async Task ApplyGlobalCapAsync(int kbps)
+    {
         // Check QoS health and surface the result in the Settings banner.
         // Do NOT block apply — the user may be troubleshooting or the diagnosis may be stale.
-        if (GlobalUploadCapKBs > 0)
+        if (kbps > 0)
         {
             var problem = await QosManager.DiagnosePrerequisitesAsync();
             QosWarning = problem ?? "";
@@ -568,14 +597,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Hard enforcement layer — pulsed firewall rules, catches existing connections and UDP
-        _downloadThrottler.SetGlobalUploadCap(GlobalUploadCapKBs);
+        _downloadThrottler.SetGlobalUploadCap(kbps);
 
         // Soft cap layer — QoS Group Policy, zero CPU overhead once applied
-        var o = await QosManager.SetGlobalUploadCapAsync(GlobalUploadCapKBs);
+        var o = await QosManager.SetGlobalUploadCapAsync(kbps);
         StatusText = o.Success
-            ? (GlobalUploadCapKBs > 0
-                ? $"Global upload cap applied: {Format.KBps(GlobalUploadCapKBs)} — bufferbloat protection active."
-                : "Global upload cap removed.")
+            ? (kbps > 0
+                ? $"Global upload cap applied: {Format.KBps(kbps)} — bufferbloat protection active."
+                : "Global upload cap disabled.")
             : "Failed to apply global upload cap: " + o.Detail;
     }
 

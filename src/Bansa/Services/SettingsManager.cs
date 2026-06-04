@@ -53,6 +53,10 @@ public class BansaSettings
     // For users without router-level QoS: system-wide upload ceiling enforced via
     // QoS Group Policy + pulsed firewall rules. 0 = disabled.
     public int GlobalUploadCapKBs { get; set; } = 0;
+    // Master switch — lets the user toggle the cap off without losing the configured
+    // KB/s value. The cap is active only when Enabled AND GlobalUploadCapKBs > 0.
+    // Defaults true so a previously-saved cap value stays active across the upgrade.
+    public bool GlobalUploadCapEnabled { get; set; } = true;
 
     // ── Gaming Mode ───────────────────────────────────────────────────────────
     // When true, per-app limits from GamingModeProfiles are applied.

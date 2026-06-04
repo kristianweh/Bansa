@@ -1590,7 +1590,16 @@
                             <!-- Global Upload Cap -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Global upload cap" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6" />
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Global upload cap" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                                        <ToggleButton Grid.Column="1" Style="{StaticResource ThemeToggle}"
+                                                      IsChecked="{Binding IsGlobalUploadCapEnabled}"
+                                                      ToolTip="Enable or disable the cap without losing the value below." />
+                                    </Grid>
 
                                     <!-- Summary — always visible -->
                                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,4"
@@ -1638,8 +1647,8 @@
                                                 Style="{StaticResource AccentButton}" Padding="12,5" Margin="0,0,8,0" />
                                         <Button Content="Clear" Padding="12,5" Click="OnClearGlobalCap" />
                                     </StackPanel>
-                                    <TextBlock Text="0 = no cap. Changes take effect immediately and survive reboot." FontSize="11"
-                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                    <TextBlock Text="0 = no cap. Use the switch above to pause the cap without losing this value. Changes take effect immediately and survive reboot." FontSize="11"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" />
                                     <!-- QoS warning banner -->
                                     <Border Visibility="{Binding QosWarningVisible, Converter={StaticResource BoolToVis}}"
                                             Background="#22F59E0B" BorderBrush="#55F59E0B" BorderThickness="1"

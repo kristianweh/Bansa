@@ -2388,7 +2388,8 @@ public partial class MainWindow : Window
     private void OnClearGlobalCap(object sender, RoutedEventArgs e)
     {
         Vm.GlobalUploadCapKBs = 0;
-        _ = Vm.ApplyGlobalUploadCapCommand.ExecuteAsync(null);
+        // Untick the master switch — its change handler removes the cap across both layers.
+        Vm.IsGlobalUploadCapEnabled = false;
     }
 
     private void OnOpenNetworkConnections(object sender, RoutedEventArgs e)
