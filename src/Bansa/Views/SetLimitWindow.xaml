@@ -51,7 +51,7 @@
                 <WrapPanel x:Name="UploadPresetsPanel" Orientation="Horizontal" Margin="0,8,0,0" />
                 <TextBlock TextWrapping="Wrap" Margin="0,8,0,0"
                            Foreground="{DynamicResource MutedTextBrush}" FontSize="11"
-                           Text="Enforced by toggling a Windows Firewall outbound block at 10 Hz. Average rate matches the cap; hits existing connections immediately without restarting them." />
+                           Text="Enforced by Windows QoS — smooth kernel-level rate shaping, no dropped connections. QoS caps a connection when it opens, so an already-open connection stays uncapped until it reconnects; the app's ↑ badge turns amber while it's still over the cap." />
                 <!-- UDP warning — shown when the app has active UDP connections -->
                 <Border x:Name="UdpWarningBorder" Visibility="Collapsed"
                         Background="#22F59E0B" BorderBrush="#55F59E0B" BorderThickness="1"
@@ -65,7 +65,7 @@
                                    Margin="0,0,8,0" VerticalAlignment="Top" />
                         <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="11" Foreground="#F59E0B">
                             <Run FontWeight="SemiBold" Text="UDP traffic detected. " />
-                            <Run Text="This app has active UDP connections (voice, game packets, QUIC). The upload limit works by dropping excess UDP packets — expect audio glitches or frame drops near the cap rather than clean rate limiting. TCP traffic will throttle cleanly." />
+                            <Run Text="This app has active UDP connections (voice, game packets, QUIC). QoS shapes UDP on newly-opened sockets, but QUIC often keeps reusing one long-lived connection that the cap can't reach until the app reconnects — so the limit may not bite right away. TCP throttles cleanly." />
                         </TextBlock>
                     </Grid>
                 </Border>

@@ -429,8 +429,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         && allConns.All(c => IsLocalAddress(c.RemoteAddress));
 
                     // UDP detection: flag apps that have active external UDP sockets.
-                    // Upload limits on UDP apps drop packets instead of smoothly pacing them —
-                    // SetLimitWindow uses this to show a warning before the user applies the limit.
+                    // QoS upload shaping classifies sockets at creation, so QUIC/UDP apps that reuse
+                    // one long-lived connection can dodge the cap — SetLimitWindow warns about this.
                     row.HasUdpConnections = allConns.Any(c =>
                         c.Protocol == "UDP" && !IsLocalAddress(c.RemoteAddress));
 
@@ -524,9 +524,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var path in s.AppBlockedPaths.ToList())
             try { await FirewallManager.BlockAppAsync(path); } catch { }
 
-        // Upload and download throttle limits use outbound/inbound firewall rules —
-        // applied immediately to existing connections, unlike QoS which only
-        // classifies new sockets at creation time.
+        // Upload limits = QoS smooth shaping (new connections); download limits = pulsed
+        // inbound firewall. Both keyed by filename, so they re-arm before the process is seen.
         foreach (var kv in s.AppUploadLimitsKBs.ToList())
             if (kv.Value > 0) _downloadThrottler.SetUploadLimit(kv.Key, kv.Value);
 
@@ -550,7 +549,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _ = FirewallManager.BlockAppAsync(row.ImagePath);
         }
 
-        // Re-apply upload limit (outbound firewall toggle — hits existing connections immediately)
+        // Re-apply upload limit (smooth QoS shaping — applies on the app's next connection)
         if (App.Settings.AppUploadLimitsKBs.TryGetValue(key, out var upKBs) && upKBs > 0)
         {
             row.UploadLimitKbps = upKBs;

@@ -75,16 +75,13 @@
                     <TextBlock Text="What to expect" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}">
                         <Run Text="•  Upload limit:" FontWeight="SemiBold" />
-                        <Run Text=" enforced by Windows QoS at the OS level. Exact rate cap." />
+                        <Run Text=" smooth rate shaping via Windows QoS at the OS level. It caps a connection when it opens, so it may not bite until the app reconnects — the ↑ badge goes amber while a connection is still over the cap." />
                         <LineBreak />
                         <Run Text="•  Download limit:" FontWeight="SemiBold" />
                         <Run Text=" Bansa watches the actual rate via ETW and toggles a temporary inbound firewall block when the cap is exceeded. The average over a few seconds matches your cap; you may see brief stutters because there's no kernel driver doing smooth pacing." />
                         <LineBreak />
                         <Run Text="•  Block:" FontWeight="SemiBold" />
                         <Run Text=" instant — the app immediately loses all network access." />
-                        <LineBreak />
-                        <Run Text="•  Game priority (DSCP):" FontWeight="SemiBold" />
-                        <Run Text=" only effective if your router honors DSCP marking. Many home routers don't; it's harmless either way." />
                     </TextBlock>
                 </StackPanel>
             </Border>

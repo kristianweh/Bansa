@@ -39,8 +39,8 @@ public partial class SetLimitWindow : Window
         DownloadKbpsBox.Text      = currentDownloadKbps > 0 ? currentDownloadKbps.ToString() : "1000";
 
         // Show UDP warning when the app has active UDP sockets (games, voice, QUIC).
-        // Upload limits work by pulsing a firewall block — for UDP this drops excess packets
-        // rather than queuing them, so voice/game quality may suffer at the limit boundary.
+        // QoS shapes upload per-socket at creation, so a QUIC app reusing one long-lived
+        // connection can keep exceeding the cap until it reconnects — the warning explains that.
         if (hasUdpConnections)
             UdpWarningBorder.Visibility = Visibility.Visible;
 

@@ -9,32 +9,33 @@ using System.Threading.Tasks;
 namespace Bansa.Services;
 
 /// <summary>
-/// Per-app bandwidth throttler using a token-bucket approach with 100 ms windows.
+/// Per-app DOWNLOAD throttling plus the global upload-cap hard layer, using a token-bucket
+/// with 100 ms windows. (Per-app UPLOAD is handled by QoS, not this class — see below.)
 ///
-/// HOW IT WORKS (both directions):
+/// HOW IT WORKS (download + global cap):
 /// A true kernel-level rate shaper requires a WFP callout driver. Without one,
 /// the closest equivalent is pulsing a Windows Firewall rule on/off at 10 Hz:
 ///   • Each 100 ms window has a byte budget: limit × 0.1 s.
 ///   • We diff the raw ETW byte accumulator at window boundaries to measure
 ///     what ACTUALLY arrived/left — no EMA, no 500 ms lag.
-///   • Over budget → add a block rule (inbound for download, outbound for upload).
+///   • Over budget → add a block rule (inbound for download, outbound for the global cap).
 ///   • Under budget next window → remove the rule.
 ///
 /// This gives an AVERAGE rate at the configured limit. The app can burst at wire
 /// speed for up to 100 ms before the block kicks in, and the COM API for firewall
 /// rule changes takes ~50–100 ms, so the effective granularity is ~200 ms.
-/// For background traffic (file downloads, cloud sync, game updates) this is
-/// imperceptible. For real-time streams a kernel driver would do better.
 ///
-/// UPLOAD vs QoS:
-/// QoS Group Policy (HKLM\…\QoS) only classifies sockets at CREATION time.
-/// Any connection open before the policy is written is never capped. The outbound
-/// firewall approach here hits existing connections immediately because WFP
-/// intercepts every outbound packet, not just new socket setup.
+/// PER-APP UPLOAD uses QoS instead (SetUploadLimit → QosManager): smooth, kernel-level
+/// shaping that never drops connections, the right tool for interactive apps. Firewall
+/// pulsing is reserved for inbound (which QoS cannot shape) and for the global cap's hard
+/// layer (which must also catch existing connections and UDP that QoS misses).
 ///
-/// REVERSIBILITY: "Bansa-Throttle-*"  = inbound (download) block rules.
-///                "Bansa-UpThrottle-*" = outbound (upload) block rules.
-/// Both prefixes are removed by CleanupManager / RemoveAllAsync.
+/// All firewall mutations are serialized (_fwGate) and reconciled against a desired-state
+/// map (_wantBlocked), so a clear can never be undone by a stale in-flight block.
+///
+/// REVERSIBILITY: "Bansa-Throttle-*" = inbound (download) blocks; "Bansa-GlobalCap-*" =
+/// global-cap outbound blocks. (Legacy "Bansa-UpThrottle-*" rules from before upload moved
+/// to QoS are still swept.) All removed by CleanupManager / RemoveAllAsync.
 /// </summary>
 public sealed class DownloadThrottler : IDisposable
 {
