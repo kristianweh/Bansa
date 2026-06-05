@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -65,13 +65,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int globalUploadCapKBs;
     [ObservableProperty] private bool isGlobalUploadCapEnabled;
     [ObservableProperty] private bool isGlobalUploadCapPersistent;
-    [ObservableProperty] private bool isGamingModeActive;
+    [ObservableProperty] private bool isScenarioActive;
     [ObservableProperty] private bool showFloatingGraph;
     [ObservableProperty] private AppRowViewModel? selectedApp;
     [ObservableProperty] private bool hideLocalOnlyApps;
     /// <summary>
     /// Non-empty when the QoS Packet Scheduler is not bound to an active network adapter.
-    /// Shown as an actionable warning banner in the Global Upload Cap / Gaming Mode settings card.
+    /// Shown as an actionable warning banner in the Global Upload Cap / Scenarios settings card.
     /// Empty string = QoS is healthy (or no global cap is configured).
     /// </summary>
     [ObservableProperty] private string qosWarning = "";
@@ -91,6 +91,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var plus = v.IndexOf('+');          // strip SourceLink build metadata if present
             if (plus >= 0) v = v[..plus];
             return $"Bansa v{v}";
+        }
+    }
+
+    /// <summary>Just the "vX.Y.Z" portion (no "Bansa" prefix), for the title-bar label.</summary>
+    public string AppVersionShort
+    {
+        get
+        {
+            var full = AppVersion;                 // "Bansa v0.9.0"
+            var i = full.IndexOf('v');
+            return i >= 0 ? full[i..] : full;      // "v0.9.0"
         }
     }
 
@@ -167,7 +178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // construction — the startup block below owns the initial apply.
         isGlobalUploadCapEnabled = App.Settings.GlobalUploadCapEnabled;
         IsGlobalUploadCapPersistent = App.Settings.GlobalUploadCapPersist;
-        IsGamingModeActive = App.Settings.GamingModeActive;
+        IsScenarioActive = App.Settings.ScenarioActive;
         ShowFloatingGraph  = App.Settings.ShowFloatingGraph;
         HideLocalOnlyApps  = App.Settings.HideLocalOnlyApps;
 
@@ -190,7 +201,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = "Monitor failed to start: " + ex.Message;
         }
 
-        // Re-apply global upload cap from previous session (standalone — independent of Gaming Mode).
+        // Re-apply global upload cap from previous session (standalone — independent of Scenarios).
         if (App.Settings.GlobalUploadCapEnabled && App.Settings.GlobalUploadCapKBs > 0)
         {
             _ = Task.Run(async () =>
@@ -198,14 +209,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var problem = await QosManager.DiagnosePrerequisitesAsync();
                 Application.Current?.Dispatcher.InvokeAsync(() => QosWarning = problem ?? "");
                 _downloadThrottler.SetGlobalUploadCap(App.Settings.GlobalUploadCapKBs);
-                try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); } catch { }
+                try { await QosManager.SetGlobalUploadCapAsync(App.Settings.GlobalUploadCapKBs); }
+                catch (Exception ex) { Log.Debug("Startup global upload cap (QoS)", ex); }
             });
         }
 
-        // Re-apply Gaming Mode profile limits if active from previous session.
-        if (App.Settings.GamingModeActive)
+        // Re-apply Scenarios profile limits if active from previous session.
+        if (App.Settings.ScenarioActive)
         {
-            foreach (var kv in App.Settings.GamingModeProfiles)
+            foreach (var kv in App.Settings.ScenarioProfiles)
             {
                 if (kv.Value.UploadKBs   > 0) _downloadThrottler.SetUploadLimit(kv.Key,   kv.Value.UploadKBs);
                 if (kv.Value.DownloadKBs > 0) _downloadThrottler.SetDownloadLimit(kv.Key, kv.Value.DownloadKBs);
@@ -261,9 +273,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SettingsManager.Save(App.Settings);
     }
 
-    partial void OnIsGamingModeActiveChanged(bool value)
+    partial void OnIsScenarioActiveChanged(bool value)
     {
-        App.Settings.GamingModeActive = value;
+        App.Settings.ScenarioActive = value;
         SettingsManager.Save(App.Settings);
     }
 
@@ -509,7 +521,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if ((DateTime.UtcNow - _lastRollup).TotalMinutes > 30)
         {
             _lastRollup = DateTime.UtcNow;
-            try { _history.Rollup(); } catch { }
+            try { _history.Rollup(); } catch (Exception ex) { Log.Debug("History rollup", ex); }
         }
     }
 
@@ -522,7 +534,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var s = App.Settings;
 
         foreach (var path in s.AppBlockedPaths.ToList())
-            try { await FirewallManager.BlockAppAsync(path); } catch { }
+            try { await FirewallManager.BlockAppAsync(path); }
+            catch (Exception ex) { Log.Debug($"EagerlyReapply block '{path}'", ex); }
 
         // Upload limits = QoS smooth shaping (new connections); download limits = pulsed
         // inbound firewall. Both keyed by filename, so they re-arm before the process is seen.
@@ -563,8 +576,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _downloadThrottler.SetDownloadLimit(row.ImagePath, downKBs);
         }
 
-        // If Gaming Mode is active and this app has a profile, override the base limits now
-        if (IsGamingModeActive && App.Settings.GamingModeProfiles.TryGetValue(key, out var gm))
+        // If Scenarios is active and this app has a profile, override the base limits now
+        if (IsScenarioActive && App.Settings.ScenarioProfiles.TryGetValue(key, out var gm))
         {
             if (gm.UploadKBs > 0)
             {
@@ -643,15 +656,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : "QoS check: " + QosWarning;
     }
 
-    // ── Gaming Mode ───────────────────────────────────────────────────────────
+    // ── Scenarios ───────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private Task ToggleGamingModeAsync()
+    private Task ToggleScenarioAsync()
     {
-        IsGamingModeActive = !IsGamingModeActive;
-        var profiles = App.Settings.GamingModeProfiles;
+        IsScenarioActive = !IsScenarioActive;
+        var profiles = App.Settings.ScenarioProfiles;
 
-        if (IsGamingModeActive)
+        if (IsScenarioActive)
         {
             foreach (var kv in profiles)
             {
@@ -669,8 +682,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             int count = profiles.Count;
             StatusText = count > 0
-                ? $"Gaming mode ON — {count} app {(count == 1 ? "profile" : "profiles")} applied."
-                : "Gaming mode ON — no profiles configured. Add apps in Settings → Gaming Mode.";
+                ? $"Scenarios ON — {count} app {(count == 1 ? "profile" : "profiles")} applied."
+                : "Scenarios ON — no profiles configured. Add apps in Settings → Scenarios.";
         }
         else
         {
@@ -691,7 +704,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (row != null) row.DownloadLimitKbps = baseDown;
                 }
             }
-            StatusText = "Gaming mode OFF — per-app limits restored.";
+            StatusText = "Scenarios OFF — per-app limits restored.";
         }
 
         return Task.CompletedTask;
@@ -701,10 +714,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         => Apps.FirstOrDefault(a => string.Equals(a.ImagePath, path, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Removes Gaming Mode override for one path and restores its base limit from settings.
-    /// Called when a profile entry is deleted while Gaming Mode is on.
+    /// Removes Scenarios override for one path and restores its base limit from settings.
+    /// Called when a profile entry is deleted while Scenarios is on.
     /// </summary>
-    public void ClearGamingModeAppLimits(string path)
+    public void ClearScenarioAppLimits(string path)
     {
         var row = FindRowByPath(path);
         var baseUp   = App.Settings.AppUploadLimitsKBs.TryGetValue(path,   out var u) ? u : 0;
@@ -715,10 +728,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Applies Gaming Mode profile limits live (called when settings are edited while mode is on).
+    /// Applies Scenarios profile limits live (called when settings are edited while mode is on).
     /// 0 in either direction = restore base limit for that direction.
     /// </summary>
-    public void ApplyGamingModeAppLimits(string path, GamingModeEntry entry)
+    public void ApplyScenarioAppLimits(string path, ScenarioEntry entry)
     {
         var row = FindRowByPath(path);
         if (entry.UploadKBs > 0)
@@ -907,14 +920,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RunCleanupAsync()
     {
-        var confirm = MessageBox.Show(
-            "This will remove ALL Bansa firewall rules and QoS policies from your system.\n\n" +
-            "Your history database in %LocalAppData%\\Bansa\\ will be preserved.\n\n" +
-            "Continue?",
-            "Bansa — Cleanup",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.Yes) return;
+        var confirm = Views.ConfirmDialog.Show(
+            "Remove all Bansa changes?",
+            "This removes ALL Bansa firewall rules and QoS policies from your system.\n\n" +
+            "Your history database in %LocalAppData%\\Bansa\\ is preserved.",
+            confirmText: "Remove everything",
+            cancelText: "Cancel",
+            danger: true);
+        if (!confirm) return;
 
         StatusText = "Cleaning up…";
         var report = await CleanupManager.RunAsync(removeDataFolder: false);
@@ -928,11 +941,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             a.UploadLimitKbps   = 0;
             a.DownloadLimitKbps = 0;
         }
-        // Remove Gaming Mode profile limits if active
-        if (IsGamingModeActive)
+        // Remove Scenarios profile limits if active
+        if (IsScenarioActive)
         {
-            IsGamingModeActive = false;
-            foreach (var kv in App.Settings.GamingModeProfiles)
+            IsScenarioActive = false;
+            foreach (var kv in App.Settings.ScenarioProfiles)
             {
                 if (kv.Value.UploadKBs   > 0) _downloadThrottler.SetUploadLimit(kv.Key,   0);
                 if (kv.Value.DownloadKBs > 0) _downloadThrottler.SetDownloadLimit(kv.Key, 0);
@@ -945,7 +958,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SettingsManager.Save(App.Settings);
 
         StatusText = "Cleanup complete.";
-        MessageBox.Show(report.ToString(), "Bansa — Cleanup result", MessageBoxButton.OK, MessageBoxImage.Information);
+        Views.ConfirmDialog.Show("Cleanup complete", report.ToString(), confirmText: "OK", cancelText: null);
     }
 
     // ── Local-address classification ──────────────────────────────────────────
@@ -1082,6 +1095,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Task.Run(() => CleanupManager.RunAsync(removeDataFolder: false, preserveGlobalCapKBs: preserveCap))
                 .Wait(TimeSpan.FromSeconds(8));
         }
-        catch { /* best-effort teardown on shutdown */ }
+        catch (Exception ex) { Log.Debug("Exit cleanup (OS rule teardown)", ex); }
     }
 }

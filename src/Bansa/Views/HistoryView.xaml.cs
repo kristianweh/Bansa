@@ -86,12 +86,11 @@ public partial class HistoryView : UserControl
                 sw.WriteLine($"\"{r.Name.Replace("\"", "\"\"")}\"," +
                              $"\"{r.DownText}\",\"{r.UpText}\"," +
                              $"{r.BytesIn},{r.BytesOut}");
-            MessageBox.Show($"Exported {rows.Count()} rows to:\n{dlg.FileName}",
-                "Bansa — Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ConfirmDialog.Show("Export complete", $"Exported {rows.Count()} rows to:\n{dlg.FileName}", confirmText: "OK", cancelText: null);
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Export failed: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Show("Export failed", ex.Message, confirmText: "OK", cancelText: null);
         }
     }
 
@@ -119,7 +118,7 @@ public partial class HistoryView : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Could not load history: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Show("Could not load history", ex.Message, confirmText: "OK", cancelText: null);
         }
     }
 }

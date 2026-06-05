@@ -1,0 +1,89 @@
+<Window x:Class="Bansa.Views.WelcomeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to Bansa"
+        SizeToContent="Height"
+        Width="520" MinWidth="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BgBrush}">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <Border Width="4" CornerRadius="2" Margin="0,2,12,2"
+                    Background="{DynamicResource AccentGradientVerticalBrush}" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Welcome to Bansa" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Text="A quick note before you start" FontSize="12"
+                           Foreground="{DynamicResource SubtleTextBrush}" Margin="0,2,0,0" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Reversibility points -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="18,16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                    <Border Width="7" Height="7" CornerRadius="4" Margin="0,6,12,0" VerticalAlignment="Top"
+                            Background="{DynamicResource AccentBrush}" />
+                    <StackPanel>
+                        <TextBlock Text="Non-intrusive &amp; fully reversible" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12"
+                                   MaxWidth="420" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                   Text="Every change Bansa makes is tagged &#x201C;Bansa-&#x201D; and removed automatically when you close the app." />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                    <Border Width="7" Height="7" CornerRadius="4" Margin="0,6,12,0" VerticalAlignment="Top"
+                            Background="{DynamicResource AccentBrush}" />
+                    <StackPanel>
+                        <TextBlock Text="Why administrator?" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12"
+                                   MaxWidth="420" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                   Text="Required to read per-app traffic (ETW) and manage Defender Firewall / QoS rules. No driver, no background service, no installer." />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                    <Border Width="7" Height="7" CornerRadius="4" Margin="0,6,12,0" VerticalAlignment="Top"
+                            Background="{DynamicResource AccentBrush}" />
+                    <StackPanel>
+                        <TextBlock Text="Your data stays put" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12"
+                                   MaxWidth="420" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                   Text="Settings and history live in %LocalAppData%\Bansa\ and survive updates." />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="7" Height="7" CornerRadius="4" Margin="0,6,12,0" VerticalAlignment="Top"
+                            Background="{DynamicResource AccentBrush}" />
+                    <StackPanel>
+                        <TextBlock Text="One-click cleanup, any time" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12"
+                                   MaxWidth="420" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                   Text="&#x201C;Clean up &amp; remove all Bansa changes&#x201D; is always in Settings &#x2192; General." />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Action -->
+        <Button Grid.Row="2" Content="Got it" Click="OnGotIt"
+                HorizontalAlignment="Right" Margin="0,18,0,0"
+                Padding="22,9" MinWidth="120" Style="{StaticResource AccentButton}"
+                IsDefault="True" />
+    </Grid>
+</Window>

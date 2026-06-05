@@ -64,14 +64,21 @@ public sealed class NetworkMonitor : IDisposable
         //   • When a burst tick exits the window it drops out abruptly — no wind-down.
         //   • Steady downloads always show the true average rate.
         //
-        // Window = SmaWindow ticks × ~500 ms/tick = ~2 seconds of history.
+        // Window = SmaWindow ticks × ~500 ms/tick = ~6 seconds of history.
         // Rate = Σ(bytes in window) / Σ(actual elapsed seconds in window).
         // Using actual elapsed time (not a fixed 0.5 s) keeps rate correct even when
         // Task.Delay fires late or a GC pause stretches a tick.
         //
+        // WHY ~4 s (was ~2 s): the kernel ETW network provider delivers events in
+        // bursts (buffer flushes), so a short window divides a clump of bytes by a
+        // ~0.5 s wall-clock tick → the displayed rate swings (e.g. 1.3↔2.4 MB/s on a
+        // steady 1.6 MB/s download). A wider trailing window averages across several
+        // flushes so the number reads steady, closer to NetBalancer. Trade-off: the
+        // rate takes ~4 s to fully reflect a real start/stop. Tunable here only.
+        //
         // DownloadThrottler reads raw ETW byte counters via GetRawBytesIn (100 ms
         // cadence), so it is unaffected by this display-only change.
-        private const int SmaWindow = 4;   // ~2 seconds
+        private const int SmaWindow = 12;   // ~6 seconds
 
         private readonly long[]   _ringIn      = new long[SmaWindow];
         private readonly long[]   _ringOut     = new long[SmaWindow];

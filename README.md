@@ -2,7 +2,7 @@
 
 A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
-> **Status:** v0.9 — personal use, no commercial intent.
+> **Status:** v1.0 — personal use, no commercial intent.
 
 ---
 
@@ -68,10 +68,10 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - **Download limit** — best-effort throttling via inbound monitor + pulsed firewall block (`Bansa-Throttle-<app>`); Windows has no smooth user-mode way to rate-limit inbound traffic.
 - **Limit profiles** — named presets (e.g., "Gaming", "Backup") for quick reuse. Right-click any app → **Quick profile** to apply a profile in one step. Edit profiles in Settings → Network.
 
-**Gaming Mode**
+**Scenarios**
 - A saved set of **per-app** upload/download limits that toggle on and off together with one click (sidebar card or Dashboard card).
 - Intended to throttle background apps (Spotify, Discord, cloud sync) so they don't compete with your game. Apps not listed are unaffected.
-- When you turn it off, each app's previous (non-gaming) limit is restored. Configure the per-app entries in **Settings → Gaming Mode**.
+- When you turn it off, each app's previous (pre-Scenario) limit is restored. Configure the per-app entries in **Settings → Scenarios**.
 
 **Global Upload Cap**
 - A separate, system-wide outbound cap — keeps bufferbloat from degrading latency while uploading.
@@ -90,11 +90,11 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Website button opens the download page when a tool isn't installed yet.
 
 **Settings**
-Four tabs — *General · Network · Gaming Mode · Appearance*:
+Four tabs — *General · Network · Scenarios · Appearance*:
 
 - *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup.
 - *Network* — limit profiles (add / edit / delete / quick-apply), global upload cap, ISP connection speed, ping monitor targets.
-- *Gaming Mode* — per-app upload/download limits applied together when Gaming Mode is toggled on.
+- *Scenarios* — per-app upload/download limits applied together when Scenarios is toggled on.
 - *Appearance* — dark/light theme, Windows accent color; separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
 
 ---

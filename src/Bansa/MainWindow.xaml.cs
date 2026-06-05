@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -77,11 +77,11 @@ public partial class MainWindow : Window
     private int _pingBufHead;
     private int _pingBufCount;
 
-    // Cached static chart brushes — frozen once, never reallocated per-frame
-    private static readonly SolidColorBrush _chartGridBrush  = FrozenBrush(Color.FromArgb(25, 255, 255, 255));
-    private static readonly SolidColorBrush _chartLabelBrush = FrozenBrush(Color.FromArgb(110, 200, 210, 220));
-    private static readonly SolidColorBrush _chartTickBrush  = FrozenBrush(Color.FromArgb(40, 255, 255, 255));
-    private static readonly SolidColorBrush _chartCrosshairDimBrush = FrozenBrush(Color.FromArgb(130, 200, 210, 230));
+    // Chart chrome (grid / labels / ticks / crosshair) resolves from the active theme's
+    // resources on each redraw so it adapts to dark/light. These are cheap dictionary
+    // lookups and the chart only redraws ~2×/s. Fallbacks match the original dark values.
+    private static Brush ChartChrome(string key, Color fallback)
+        => Application.Current?.TryFindResource(key) as Brush ?? FrozenBrush(fallback);
 
     // Cached dash arrays — allocated once, reused across every chart redraw
     private static readonly DoubleCollection _dashFour  = Frozen(new DoubleCollection { 4, 4 });
@@ -385,6 +385,19 @@ public partial class MainWindow : Window
         // Wire Tools panel
         _toolsVm = new ToolsViewModel();
         ToolsPanel.DataContext = _toolsVm;
+
+        // First-run reversibility explainer — shown once. Deferred to Background priority so the
+        // main window paints first; skipped when starting hidden to the tray.
+        if (!App.Settings.WelcomeDismissed && !App.Settings.StartMinimizedToTray)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+            {
+                try { new Views.WelcomeWindow { Owner = this }.ShowDialog(); }
+                catch (Exception ex) { Log.Debug("Welcome dialog failed", ex); }
+                App.Settings.WelcomeDismissed = true;
+                SettingsManager.Save(App.Settings);
+            }));
+        }
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -529,9 +542,13 @@ public partial class MainWindow : Window
         // Use windowed history from here on
         history = visibleHistory;
 
+        // Smooth the plotted series so steady transfers draw as a flat line. The crosshair
+        // tooltip still reads _chartHistory (raw) for exact per-instant values.
+        var draw = ChartFx.Smooth(history);
+
         // Shared or independent peaks depending on dual-scale toggle
         _chartPeakDown = 1; _chartPeakUp = 1;
-        foreach (var (d, u) in history)
+        foreach (var (d, u) in draw)
         {
             if (d > _chartPeakDown) _chartPeakDown = d;
             if (u > _chartPeakUp)   _chartPeakUp   = u;
@@ -561,6 +578,11 @@ public partial class MainWindow : Window
         var downFill   = _chartDownFill!;
         var upFill     = _chartUpFill!;
 
+        // Theme-aware chart chrome (resolved once per redraw).
+        var gridBrush  = ChartChrome("BorderBrush",     Color.FromArgb(25, 255, 255, 255));
+        var labelBrush = ChartChrome("SubtleTextBrush", Color.FromArgb(110, 200, 210, 220));
+        var tickBrush  = ChartChrome("BorderBrush",     Color.FromArgb(40, 255, 255, 255));
+
         // ── Horizontal grid lines + Y-axis labels ────────────────────────────────
         for (int li = 1; li <= 3; li++)
         {
@@ -568,14 +590,14 @@ public partial class MainWindow : Window
             MainChartCanvas.Children.Add(new System.Windows.Shapes.Line
             {
                 X1 = 0, Y1 = y, X2 = w, Y2 = y,
-                Stroke = _chartGridBrush, StrokeThickness = 1,
+                Stroke = gridBrush, StrokeThickness = 1,
                 StrokeDashArray = _dashFour
             });
             long labelVal = (long)(sharedPeak * (4 - li) / 4.0);
             var lbl = new TextBlock
             {
                 Text = Format.Rate(labelVal), FontSize = 9.5,
-                Foreground = _chartLabelBrush, IsHitTestVisible = false
+                Foreground = labelBrush, IsHitTestVisible = false
             };
             Canvas.SetLeft(lbl, 4); Canvas.SetTop(lbl, y - 12);
             MainChartCanvas.Children.Add(lbl);
@@ -591,12 +613,12 @@ public partial class MainWindow : Window
             MainChartCanvas.Children.Add(new System.Windows.Shapes.Line
             {
                 X1 = tx, Y1 = 0, X2 = tx, Y2 = h,
-                Stroke = _chartTickBrush, StrokeThickness = 1
+                Stroke = tickBrush, StrokeThickness = 1
             });
             var tLbl = new TextBlock
             {
                 Text = $"-{sAgo}s", FontSize = 9,
-                Foreground = _chartLabelBrush, IsHitTestVisible = false
+                Foreground = labelBrush, IsHitTestVisible = false
             };
             Canvas.SetLeft(tLbl, tx + 2); Canvas.SetTop(tLbl, h - 16);
             MainChartCanvas.Children.Add(tLbl);
@@ -631,8 +653,8 @@ public partial class MainWindow : Window
         for (int i = 0; i < n; i++)
         {
             double x = n == 1 ? 0 : i * (w / (n - 1));
-            downPts.Add(new Point(x, h - ((double)history[i].Down / peakD) * h * 0.90));
-            upPts.Add(  new Point(x, h - ((double)history[i].Up   / peakU) * h * 0.90));
+            downPts.Add(new Point(x, h - ((double)draw[i].Down / peakD) * h * 0.90));
+            upPts.Add(  new Point(x, h - ((double)draw[i].Up   / peakU) * h * 0.90));
         }
 
         MainChartCanvas.Children.Add(new System.Windows.Shapes.Path { Data = BuildSmoothPath(downPts, true,  h), Fill = downFill });
@@ -699,8 +721,8 @@ public partial class MainWindow : Window
             _crosshairPanel = new Border
             {
                 IsHitTestVisible = false,
-                Background       = new SolidColorBrush(Color.FromArgb(230, 14, 16, 26)),
-                BorderBrush      = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+                Background       = ChartChrome("PanelBrush",  Color.FromArgb(230, 14, 16, 26)),
+                BorderBrush      = ChartChrome("BorderBrush", Color.FromArgb(60, 255, 255, 255)),
                 BorderThickness  = new Thickness(1),
                 CornerRadius     = new CornerRadius(8),
             };
@@ -736,13 +758,14 @@ public partial class MainWindow : Window
             var upBrush   = (Brush)(Application.Current.Resources.Contains("ChartUpBrush")
                 ? Application.Current.Resources["ChartUpBrush"]
                 : new SolidColorBrush(Color.FromRgb(0xF3, 0x9C, 0x12)));
-            var dimBrush  = _chartCrosshairDimBrush;
+            var dimBrush  = ChartChrome("SubtleTextBrush", Color.FromArgb(130, 200, 210, 230));
+            var valueBrush = ChartChrome("TextBrush", Colors.White);
 
             var header = new StackPanel { Orientation = Orientation.Horizontal };
             header.Children.Add(new TextBlock { Text = "↓ ", Foreground = downBrush, FontWeight = FontWeights.SemiBold, FontSize = 11 });
-            header.Children.Add(new TextBlock { Text = Format.Bytes(down / 2), Foreground = new SolidColorBrush(Colors.White), FontWeight = FontWeights.SemiBold, FontSize = 11, MinWidth = 72 });
+            header.Children.Add(new TextBlock { Text = Format.Bytes(down / 2), Foreground = valueBrush, FontWeight = FontWeights.SemiBold, FontSize = 11, MinWidth = 72 });
             header.Children.Add(new TextBlock { Text = "  ↑ ", Foreground = upBrush, FontWeight = FontWeights.SemiBold, FontSize = 11 });
-            header.Children.Add(new TextBlock { Text = Format.Bytes(up / 2), Foreground = new SolidColorBrush(Colors.White), FontWeight = FontWeights.SemiBold, FontSize = 11, MinWidth = 72 });
+            header.Children.Add(new TextBlock { Text = Format.Bytes(up / 2), Foreground = valueBrush, FontWeight = FontWeights.SemiBold, FontSize = 11, MinWidth = 72 });
             header.Children.Add(new TextBlock { Text = $"  {timeStr}", Foreground = dimBrush, FontSize = 10 });
             panel.Children.Add(header);
 
@@ -752,7 +775,7 @@ public partial class MainWindow : Window
                 panel.Children.Add(new Border
                 {
                     Height = 1, Margin = new Thickness(-10, 6, -10, 5),
-                    Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255))
+                    Background = ChartChrome("BorderBrush", Color.FromArgb(40, 255, 255, 255))
                 });
 
                 foreach (var (name, imgPath, appDown, appUp) in apps)
@@ -783,7 +806,7 @@ public partial class MainWindow : Window
                     var nameTb = new TextBlock
                     {
                         Text = displayName,
-                        Foreground = new SolidColorBrush(Color.FromArgb(210, 220, 225, 240)),
+                        Foreground = valueBrush,
                         FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center,
                         Margin = new Thickness(0, 0, 10, 0)
                     };
@@ -829,7 +852,7 @@ public partial class MainWindow : Window
                 panel.Children.Add(new Border
                 {
                     Height = 1, Margin = new Thickness(-10, 6, -10, 4),
-                    Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255))
+                    Background = ChartChrome("BorderBrush", Color.FromArgb(40, 255, 255, 255))
                 });
 
                 var accentBrush = (Brush)(Application.Current.Resources.Contains("AccentBrush")
@@ -1222,9 +1245,9 @@ public partial class MainWindow : Window
         SettingsTabGeneral.Visibility    = tag == "general"    ? Visibility.Visible : Visibility.Collapsed;
         SettingsTabNetwork.Visibility    = tag == "network"    ? Visibility.Visible : Visibility.Collapsed;
         SettingsTabAppearance.Visibility = tag == "appearance" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabGamingMode.Visibility = tag == "gamingmode" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTabScenario.Visibility = tag == "scenarios" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "network")    RefreshConnectionSpeedUI();
-        if (tag == "gamingmode") RefreshGamingModeUI();
+        if (tag == "scenarios") RefreshScenarioUI();
     }
 
     // ── Connection speed ──────────────────────────────────────────────────────
@@ -1459,6 +1482,23 @@ public partial class MainWindow : Window
     {
         NavigateToPanel(5);
         NavigateToSettingsTab("ping");
+    }
+
+    // Keyboard activation for the click-only dashboard / sidebar cards. Plain Borders aren't
+    // focusable or Enter/Space-activatable, so each accessible card carries a Tag naming its
+    // action and this raises the same navigation / toggle a mouse click would.
+    private void OnCardKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter && e.Key != Key.Space) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string action) return;
+        e.Handled = true;
+        switch (action)
+        {
+            case "nav:network":  NavigateToPanel(1); break;
+            case "nav:hardware": NavigateToPanel(2); break;
+            case "ping":         NavigateToPanel(5); NavigateToSettingsTab("ping"); break;
+            case "scenario":     _ = Vm.ToggleScenarioCommand.ExecuteAsync(null); break;
+        }
     }
 
     // ────────── Hardware monitor panel ──────────
@@ -1844,7 +1884,7 @@ public partial class MainWindow : Window
         var maxTb = new TextBlock
         {
             Text = maxLabel, FontSize = 8,
-            Foreground = _chartLabelBrush,
+            Foreground = ChartChrome("SubtleTextBrush", Color.FromArgb(110, 200, 210, 220)),
             IsHitTestVisible = false
         };
         Canvas.SetLeft(maxTb, 2); Canvas.SetTop(maxTb, 1);
@@ -1853,7 +1893,7 @@ public partial class MainWindow : Window
         var minTb = new TextBlock
         {
             Text = minLabel, FontSize = 8,
-            Foreground = _chartLabelBrush,
+            Foreground = ChartChrome("SubtleTextBrush", Color.FromArgb(110, 200, 210, 220)),
             IsHitTestVisible = false
         };
         Canvas.SetLeft(minTb, 2); Canvas.SetTop(minTb, h - 11);
@@ -2101,7 +2141,7 @@ public partial class MainWindow : Window
         if (app is null) return;
         if (app.Processes.Count == 0)
         {
-            MessageBox.Show("No active processes for this app.", "Bansa", MessageBoxButton.OK, MessageBoxImage.Information);
+            Views.ConfirmDialog.Show("No active processes", "This app has no active processes right now.", confirmText: "OK", cancelText: null);
             return;
         }
         var sb = new StringBuilder();
@@ -2116,7 +2156,7 @@ public partial class MainWindow : Window
                 sb.AppendLine($"    {p.ImagePath}");
             sb.AppendLine();
         }
-        MessageBox.Show(sb.ToString(), $"Processes for {app.Name}", MessageBoxButton.OK, MessageBoxImage.Information);
+        Views.ConfirmDialog.Show($"Processes for {app.Name}", sb.ToString(), confirmText: "OK", cancelText: null);
     }
 
     // ────────── Settings ──────────
@@ -2169,17 +2209,17 @@ public partial class MainWindow : Window
         Application.Current.Resources["AccentBrush"] = brush;
     }
 
-    // ────────── Gaming Mode ──────────
+    // ────────── Scenarios ──────────
 
-    private void OnGamingModeBtnClick(object sender, RoutedEventArgs e)
-        => _ = Vm.ToggleGamingModeCommand.ExecuteAsync(null);
+    private void OnScenarioBtnClick(object sender, RoutedEventArgs e)
+        => _ = Vm.ToggleScenarioCommand.ExecuteAsync(null);
 
-    // ── Gaming Mode profile editor (Settings tab) ──────────────────────────────
+    // ── Scenarios profile editor (Settings tab) ──────────────────────────────
 
     // Exposed for DataTemplate bindings via RelativeSource AncestorType=Window
     public IReadOnlyList<LimitProfile> AvailableLimitProfiles => App.Settings.LimitProfiles;
 
-    private class GamingModeProfileRow
+    private class ScenarioProfileRow
     {
         public string ExePath    { get; set; } = "";
         public string AppName    { get; set; } = "";
@@ -2193,18 +2233,18 @@ public partial class MainWindow : Window
         public string ImagePath { get; set; } = "";
     }
 
-    private List<AppSearchEntry> _allGamingModeApps = new();
-    private AppSearchEntry? _selectedGamingModeApp;
+    private List<AppSearchEntry> _allScenarioApps = new();
+    private AppSearchEntry? _selectedScenarioApp;
     private bool _suppressSearchUpdate;
 
-    private async void RefreshGamingModeUI()
+    private async void RefreshScenarioUI()
     {
         // Snapshot UI-thread collections before the background task
         var networkApps = Vm.Apps
             .Where(a => !string.IsNullOrEmpty(a.ImagePath))
             .Select(a => (name: System.IO.Path.GetFileNameWithoutExtension(a.ImagePath), path: a.ImagePath))
             .ToList();
-        var profileApps = App.Settings.GamingModeProfiles
+        var profileApps = App.Settings.ScenarioProfiles
             .Select(kv => (
                 name: !string.IsNullOrEmpty(kv.Value.AppName)
                     ? kv.Value.AppName
@@ -2218,14 +2258,14 @@ public partial class MainWindow : Window
 
         // Reset search UI immediately
         _suppressSearchUpdate = true;
-        GamingModeSearchBox.Text = "";
+        ScenarioSearchBox.Text = "";
         _suppressSearchUpdate = false;
-        GamingModeClearBtn.Visibility = Visibility.Collapsed;
-        _selectedGamingModeApp = null;
-        GamingModeSearchPopup.IsOpen = false;
+        ScenarioClearBtn.Visibility = Visibility.Collapsed;
+        _selectedScenarioApp = null;
+        ScenarioSearchPopup.IsOpen = false;
 
         // Enumerate ALL running processes in background (MainModule.FileName can be slow)
-        _allGamingModeApps = await Task.Run(() =>
+        _allScenarioApps = await Task.Run(() =>
         {
             var dict = new Dictionary<string, AppSearchEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -2253,57 +2293,57 @@ public partial class MainWindow : Window
                 .ToList();
         });
 
-        RefreshGamingModeProfilesList();
+        RefreshScenarioProfilesList();
     }
 
-    private void OnGamingModeSearchGotFocus(object sender, RoutedEventArgs e)
+    private void OnScenarioSearchGotFocus(object sender, RoutedEventArgs e)
     {
-        GamingModeResultsList.ItemsSource = _allGamingModeApps;
-        if (_allGamingModeApps.Count > 0)
-            GamingModeSearchPopup.IsOpen = true;
+        ScenarioResultsList.ItemsSource = _allScenarioApps;
+        if (_allScenarioApps.Count > 0)
+            ScenarioSearchPopup.IsOpen = true;
     }
 
-    private void OnGamingModeSearchTextChanged(object sender, TextChangedEventArgs e)
+    private void OnScenarioSearchTextChanged(object sender, TextChangedEventArgs e)
     {
         if (_suppressSearchUpdate) return;
-        var text = GamingModeSearchBox.Text ?? "";
-        GamingModeClearBtn.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var text = ScenarioSearchBox.Text ?? "";
+        ScenarioClearBtn.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var filtered = string.IsNullOrWhiteSpace(text)
-            ? _allGamingModeApps
-            : _allGamingModeApps.Where(a => a.Name.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+            ? _allScenarioApps
+            : _allScenarioApps.Where(a => a.Name.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        GamingModeResultsList.ItemsSource = filtered;
-        GamingModeSearchPopup.IsOpen = filtered.Count > 0;
+        ScenarioResultsList.ItemsSource = filtered;
+        ScenarioSearchPopup.IsOpen = filtered.Count > 0;
     }
 
-    private void OnGamingModeResultSelected(object sender, SelectionChangedEventArgs e)
+    private void OnScenarioResultSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (GamingModeResultsList.SelectedItem is not AppSearchEntry app) return;
-        _selectedGamingModeApp = app;
+        if (ScenarioResultsList.SelectedItem is not AppSearchEntry app) return;
+        _selectedScenarioApp = app;
         _suppressSearchUpdate = true;
-        GamingModeSearchBox.Text = app.Name;
+        ScenarioSearchBox.Text = app.Name;
         _suppressSearchUpdate = false;
-        GamingModeResultsList.SelectedIndex = -1;
-        GamingModeSearchPopup.IsOpen = false;
+        ScenarioResultsList.SelectedIndex = -1;
+        ScenarioSearchPopup.IsOpen = false;
     }
 
-    private void OnGamingModeSearchClear(object sender, RoutedEventArgs e)
+    private void OnScenarioSearchClear(object sender, RoutedEventArgs e)
     {
         _suppressSearchUpdate = true;
-        GamingModeSearchBox.Text = "";
+        ScenarioSearchBox.Text = "";
         _suppressSearchUpdate = false;
-        _selectedGamingModeApp = null;
-        GamingModeClearBtn.Visibility = Visibility.Collapsed;
-        GamingModeResultsList.ItemsSource = _allGamingModeApps;
-        GamingModeSearchPopup.IsOpen = _allGamingModeApps.Count > 0;
-        GamingModeSearchBox.Focus();
+        _selectedScenarioApp = null;
+        ScenarioClearBtn.Visibility = Visibility.Collapsed;
+        ScenarioResultsList.ItemsSource = _allScenarioApps;
+        ScenarioSearchPopup.IsOpen = _allScenarioApps.Count > 0;
+        ScenarioSearchBox.Focus();
     }
 
-    private void RefreshGamingModeProfilesList()
+    private void RefreshScenarioProfilesList()
     {
-        var profiles = App.Settings.GamingModeProfiles;
-        var rows = profiles.Select(kv => new GamingModeProfileRow
+        var profiles = App.Settings.ScenarioProfiles;
+        var rows = profiles.Select(kv => new ScenarioProfileRow
         {
             ExePath     = kv.Key,
             AppName     = string.IsNullOrEmpty(kv.Value.AppName)
@@ -2312,35 +2352,35 @@ public partial class MainWindow : Window
             UploadKBs   = kv.Value.UploadKBs.ToString(),
             DownloadKBs = kv.Value.DownloadKBs.ToString(),
         }).ToList();
-        GamingModeProfilesControl.ItemsSource = rows;
-        GamingModeEmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ScenarioProfilesControl.ItemsSource = rows;
+        ScenarioEmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void OnGamingModeQuickProfileSelected(object sender, SelectionChangedEventArgs e)
+    private void OnScenarioQuickProfileSelected(object sender, SelectionChangedEventArgs e)
     {
         if (sender is not System.Windows.Controls.ComboBox combo) return;
         if (combo.SelectedItem is not LimitProfile profile) return;
         if (combo.Tag is not string path) return;
-        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        if (!App.Settings.ScenarioProfiles.TryGetValue(path, out var entry)) return;
         entry.UploadKBs   = profile.UploadKbps;
         entry.DownloadKBs = profile.DownloadKbps;
-        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        if (Vm.IsScenarioActive) Vm.ApplyScenarioAppLimits(path, entry);
         SettingsManager.Save(App.Settings);
-        RefreshGamingModeProfilesList();
+        RefreshScenarioProfilesList();
     }
 
-    private void OnAddGamingModeApp(object sender, RoutedEventArgs e)
+    private void OnAddScenarioApp(object sender, RoutedEventArgs e)
     {
         // Use item selected from popup; fall back to exact name match if the user typed one in
-        AppSearchEntry? selected = _selectedGamingModeApp
-            ?? _allGamingModeApps.FirstOrDefault(a =>
-                   a.Name.Equals(GamingModeSearchBox.Text?.Trim() ?? "", StringComparison.OrdinalIgnoreCase));
+        AppSearchEntry? selected = _selectedScenarioApp
+            ?? _allScenarioApps.FirstOrDefault(a =>
+                   a.Name.Equals(ScenarioSearchBox.Text?.Trim() ?? "", StringComparison.OrdinalIgnoreCase));
         if (selected == null || string.IsNullOrEmpty(selected.ImagePath)) return;
 
         var key = selected.ImagePath.ToLowerInvariant();
-        if (!App.Settings.GamingModeProfiles.ContainsKey(key))
+        if (!App.Settings.ScenarioProfiles.ContainsKey(key))
         {
-            App.Settings.GamingModeProfiles[key] = new GamingModeEntry
+            App.Settings.ScenarioProfiles[key] = new ScenarioEntry
             {
                 AppName     = selected.Name,
                 UploadKBs   = 0,
@@ -2349,37 +2389,37 @@ public partial class MainWindow : Window
             SettingsManager.Save(App.Settings);
         }
 
-        GamingModeSearchBox.Text = "";
-        _selectedGamingModeApp = null;
-        RefreshGamingModeProfilesList();
+        ScenarioSearchBox.Text = "";
+        _selectedScenarioApp = null;
+        RefreshScenarioProfilesList();
     }
 
-    private void OnRemoveGamingModeProfile(object sender, RoutedEventArgs e)
+    private void OnRemoveScenarioProfile(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.Tag is not string path) return;
-        App.Settings.GamingModeProfiles.Remove(path);
-        if (Vm.IsGamingModeActive) Vm.ClearGamingModeAppLimits(path);
+        App.Settings.ScenarioProfiles.Remove(path);
+        if (Vm.IsScenarioActive) Vm.ClearScenarioAppLimits(path);
         SettingsManager.Save(App.Settings);
-        RefreshGamingModeProfilesList();
+        RefreshScenarioProfilesList();
     }
 
-    private void OnGamingModeUploadLostFocus(object sender, RoutedEventArgs e)
+    private void OnScenarioUploadLostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is not TextBox tb || tb.Tag is not string path) return;
         if (!int.TryParse(tb.Text.Trim(), out int kbs) || kbs < 0) { kbs = 0; tb.Text = "0"; }
-        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        if (!App.Settings.ScenarioProfiles.TryGetValue(path, out var entry)) return;
         entry.UploadKBs = kbs;
-        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        if (Vm.IsScenarioActive) Vm.ApplyScenarioAppLimits(path, entry);
         SettingsManager.Save(App.Settings);
     }
 
-    private void OnGamingModeDownloadLostFocus(object sender, RoutedEventArgs e)
+    private void OnScenarioDownloadLostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is not TextBox tb || tb.Tag is not string path) return;
         if (!int.TryParse(tb.Text.Trim(), out int kbs) || kbs < 0) { kbs = 0; tb.Text = "0"; }
-        if (!App.Settings.GamingModeProfiles.TryGetValue(path, out var entry)) return;
+        if (!App.Settings.ScenarioProfiles.TryGetValue(path, out var entry)) return;
         entry.DownloadKBs = kbs;
-        if (Vm.IsGamingModeActive) Vm.ApplyGamingModeAppLimits(path, entry);
+        if (Vm.IsScenarioActive) Vm.ApplyScenarioAppLimits(path, entry);
         SettingsManager.Save(App.Settings);
     }
 
@@ -2489,7 +2529,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Export failed: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Views.ConfirmDialog.Show("Export failed", ex.Message, confirmText: "OK", cancelText: null);
         }
     }
 
@@ -2511,14 +2551,15 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Could not read settings file: " + ex.Message, "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Views.ConfirmDialog.Show("Could not read settings file", ex.Message, confirmText: "OK", cancelText: null);
             return;
         }
 
-        var result = MessageBox.Show(
-            "This will replace all current settings — limits, profiles, colors, and preferences.\n\nContinue?",
-            "Import settings", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result != MessageBoxResult.Yes) return;
+        var ok = Views.ConfirmDialog.Show(
+            "Import settings?",
+            "This will replace all current settings — limits, profiles, colors, and preferences.",
+            confirmText: "Replace settings", cancelText: "Cancel", danger: true);
+        if (!ok) return;
 
         App.Settings = imported;
         SettingsManager.Save(App.Settings);

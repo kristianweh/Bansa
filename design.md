@@ -1,4 +1,4 @@
-﻿# Bansa — Design Notes
+# Bansa — Design Notes
 
 **Bansa** — a non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows.
 
@@ -65,13 +65,13 @@ No background service. No driver. No IPC layer needed (everything runs in one pr
 - **Delayed priority mode.** No equivalent without a driver. We can fake it via rate limit + low DSCP value.
 - **Deep packet inspection.** Not feasible from user-mode. Out of scope.
 
-## Feature status (v0.9)
+## Feature status (v1.0)
 
 - ✅ Live process list with up/down rate and connection counts
 - ✅ Double-click to see individual processes and connections
 - ✅ Right-click → Set limits / Quick profile / Clear limits / Block / Unblock
 - ✅ History tab with date-range totals per app + activity log
-- ✅ Gaming Mode — a saved set of per-app up/down limits toggled on/off together
+- ✅ Scenarios — a saved set of per-app up/down limits toggled on/off together
 - ✅ Global Upload Cap — system-wide outbound cap (QoS soft cap + pulsed-firewall hard cap)
 - ✅ Settings with one-click "Clean up & remove all Bansa changes"
 - ✅ Tray icon with live rates, hover popup, ping indicator

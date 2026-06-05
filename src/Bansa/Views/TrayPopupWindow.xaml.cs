@@ -196,10 +196,14 @@ public partial class TrayPopupWindow : Window
 
         var now = DateTime.UtcNow;
         _rankTick++;
+        // Mirror the Network tab's threshold filter: the passed list is already
+        // text/hide-local filtered upstream; this floor matches HideBelowKBps so the
+        // popup shows the same apps the Network tab does (0 = any currently-active app).
+        long floor = (long)((App.Settings?.HideBelowKBps ?? 0) * 1024);
         foreach (var a in apps)
         {
-            // Only hold apps with at least 5 KB/s — keeps the list clean and stable
-            if (a.BytesInPerSec + a.BytesOutPerSec >= 5120)
+            long activity = a.BytesInPerSec + a.BytesOutPerSec;
+            if (activity > 0 && activity >= floor)
                 _appHold[a.Name] = (a, now);
             // Below threshold: don't update timestamp, let hold expire naturally
         }
@@ -275,11 +279,14 @@ public partial class TrayPopupWindow : Window
         double h = ChartCanvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
 
+        // Smooth the plotted series so steady transfers draw as a flat line.
+        var draw = ChartFx.Smooth(history);
+
         long peak = 1;
-        for (int i = 0; i < history.Count; i++)
+        for (int i = 0; i < draw.Count; i++)
         {
-            if (history[i].Down > peak) peak = history[i].Down;
-            if (history[i].Up   > peak) peak = history[i].Up;
+            if (draw[i].Down > peak) peak = draw[i].Down;
+            if (draw[i].Up   > peak) peak = draw[i].Up;
         }
 
         ChartPeakLabel.Text = Format.Rate(peak);
@@ -291,8 +298,11 @@ public partial class TrayPopupWindow : Window
         Brush downFill   = new SolidColorBrush(Color.FromArgb(80, downColor.R, downColor.G, downColor.B));
         Brush upFill     = new SolidColorBrush(Color.FromArgb(48, upColor.R,   upColor.G,   upColor.B));
 
-        var gridBrush  = new SolidColorBrush(Color.FromArgb(25, 255, 255, 255));
-        var labelBrush = new SolidColorBrush(Color.FromArgb(100, 200, 210, 220));
+        // Theme-aware chart chrome (matches the floating graph's approach).
+        var gridBrush  = Application.Current.TryFindResource("BorderBrush")     as Brush
+                         ?? new SolidColorBrush(Color.FromArgb(25, 255, 255, 255));
+        var labelBrush = Application.Current.TryFindResource("SubtleTextBrush") as Brush
+                         ?? new SolidColorBrush(Color.FromArgb(100, 200, 210, 220));
 
         // ── Horizontal grid lines + Y-axis labels ────────────────────────────────
         for (int li = 1; li <= 3; li++)
@@ -315,8 +325,9 @@ public partial class TrayPopupWindow : Window
         }
 
         // ── Time markers (every ~10 s = every 20 samples at 500 ms) ─────────────
-        int n = history.Count;
-        var tickBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+        int n = draw.Count;
+        var tickBrush = Application.Current.TryFindResource("BorderBrush") as Brush
+                        ?? new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
         for (int sAgo = 10; sAgo < 30; sAgo += 10)
         {
             int sIdx = n - 1 - sAgo * 2;
@@ -342,8 +353,8 @@ public partial class TrayPopupWindow : Window
         for (int i = 0; i < n; i++)
         {
             double x = (n == 1) ? 0 : (i * (w / (n - 1)));
-            downPts.Add(new Point(x, h - ((double)history[i].Down / peak) * h * 0.90));
-            upPts.Add(  new Point(x, h - ((double)history[i].Up   / peak) * h * 0.90));
+            downPts.Add(new Point(x, h - ((double)draw[i].Down / peak) * h * 0.90));
+            upPts.Add(  new Point(x, h - ((double)draw[i].Up   / peak) * h * 0.90));
         }
 
         ChartCanvas.Children.Add(new Path { Data = SmoothPath(downPts, true,  h), Fill = downFill });

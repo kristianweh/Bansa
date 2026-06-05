@@ -63,6 +63,34 @@
         </Setter>
     </Style>
 
+    <!-- Hover-lift card: Card + a subtle rise on mouse-over. The animated TranslateTransform
+         must stay declared per-instance on each Border (an animated Freezable can't be shared
+         via a Setter), so consumers keep:
+             <Border Style="{StaticResource HoverLiftCard}">
+                 <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+         and this style supplies the shared MouseEnter/MouseLeave animation. -->
+    <Style TargetType="Border" x:Key="HoverLiftCard" BasedOn="{StaticResource Card}">
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="Border.MouseEnter">
+                <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                     To="-4" Duration="0:0:0.18">
+                        <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard></BeginStoryboard>
+            </EventTrigger>
+            <EventTrigger RoutedEvent="Border.MouseLeave">
+                <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                     To="0" Duration="0:0:0.25">
+                        <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard></BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Elevated card: stronger shadow for modals / floating surfaces -->
     <Style TargetType="Border" x:Key="ElevatedCard" BasedOn="{StaticResource Card}">
         <Setter Property="Effect">

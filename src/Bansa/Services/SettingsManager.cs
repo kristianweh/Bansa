@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 
@@ -6,8 +6,8 @@ namespace Bansa.Services;
 
 public enum RateUnit { Bytes, Bits }
 
-/// <summary>Per-app limit applied when Gaming Mode is active.</summary>
-public class GamingModeEntry
+/// <summary>Per-app limit applied when Scenarios is active.</summary>
+public class ScenarioEntry
 {
     public string AppName    { get; set; } = "";
     public int    UploadKBs  { get; set; } = 0;
@@ -30,6 +30,7 @@ public class BansaSettings
     public bool MinimizeOnClose      { get; set; } = false;
     public bool StartMinimizedToTray { get; set; } = false;
     public bool ShowTrayIcon         { get; set; } = true;
+    public bool WelcomeDismissed     { get; set; } = false;  // first-run reversibility explainer shown
     public string PingTarget { get; set; } = "8.8.8.8";
     public List<string> PingTargets { get; set; } = new()
         { "8.8.8.8", "1.1.1.1", "9.9.9.9", "8.8.4.4", "208.67.222.222" };
@@ -63,11 +64,15 @@ public class BansaSettings
     // or Uninstall-Bansa.ps1. The firewall hard layer still requires the app to be running.
     public bool GlobalUploadCapPersist { get; set; } = false;
 
-    // ── Gaming Mode ───────────────────────────────────────────────────────────
-    // When true, per-app limits from GamingModeProfiles are applied.
-    public bool GamingModeActive  { get; set; } = false;
+    // ── Scenarios (formerly "Gaming Mode") ────────────────────────────────────
+    // When true, per-app limits from ScenarioProfiles are applied.
+    // JSON keys retain the old "GamingMode*" names so settings saved before the
+    // rename keep loading — do not change the JsonPropertyName values.
+    [System.Text.Json.Serialization.JsonPropertyName("GamingModeActive")]
+    public bool ScenarioActive  { get; set; } = false;
     // Key = exe path (lowercased). Applied on activation, removed on deactivation.
-    public Dictionary<string, GamingModeEntry> GamingModeProfiles { get; set; } = new();
+    [System.Text.Json.Serialization.JsonPropertyName("GamingModeProfiles")]
+    public Dictionary<string, ScenarioEntry> ScenarioProfiles { get; set; } = new();
 
     // ── Ping target labels ───────────────────────────────────────────────────
     // Optional display name for each ping target.  Key = IP/hostname (case-insensitive).
@@ -196,9 +201,9 @@ public static class SettingsManager
             Directory.CreateDirectory(App.DataFolder);
             var json = JsonSerializer.Serialize(settings, JsonOpts);
             File.WriteAllText(SettingsPath, json);
-            try { Changed?.Invoke(); } catch { }
+            try { Changed?.Invoke(); } catch (Exception ex) { Log.Debug("SettingsManager.Changed handler", ex); }
         }
-        catch { /* best effort */ }
+        catch (Exception ex) { Log.Debug("SettingsManager.Save", ex); }
     }
 
     public static RateUnit GetRateUnit()

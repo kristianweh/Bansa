@@ -53,7 +53,7 @@ public partial class SpeedTestView : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Speed test failed: {ex.Message}", "Bansa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Show("Speed test failed", ex.Message, confirmText: "OK", cancelText: null);
         }
         finally
         {
@@ -70,7 +70,7 @@ public partial class SpeedTestView : UserControl
         try
         {
             Clipboard.SetText("https://fast.com");
-            MessageBox.Show("Copied https://fast.com to the clipboard.", "Bansa", MessageBoxButton.OK, MessageBoxImage.Information);
+            ConfirmDialog.Show("Copied", "Copied https://fast.com to the clipboard.", confirmText: "OK", cancelText: null);
         }
         catch { }
     }

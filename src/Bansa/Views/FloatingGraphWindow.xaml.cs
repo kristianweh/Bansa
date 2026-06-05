@@ -167,9 +167,14 @@ public partial class FloatingGraphWindow : Window
             var now = DateTime.UtcNow;
             _rankTick++;
 
+            // Mirror the Network tab's threshold filter: the passed list is already
+            // text/hide-local filtered upstream, and this floor matches HideBelowKBps so
+            // the overlay shows the same apps the Network tab does (0 = any active app).
+            long floor = (long)((App.Settings?.HideBelowKBps ?? 0) * 1024);
             foreach (var a in apps)
             {
-                if (a.BytesInPerSec + a.BytesOutPerSec >= 5120)
+                long activity = a.BytesInPerSec + a.BytesOutPerSec;
+                if (activity > 0 && activity >= floor)
                     _appHold[a.Name] = (a, now);
                 else if (_appHold.TryGetValue(a.Name, out var ex))
                     _appHold[a.Name] = (a, ex.LastActive);
@@ -313,8 +318,12 @@ public partial class FloatingGraphWindow : Window
         double h = ChartCanvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
 
+        // Smooth the plotted series so steady transfers draw as a flat line (the raw
+        // _history is kept intact for the live rate readout above).
+        var draw = ChartFx.Smooth(_history);
+
         long rawDown = 1, rawUp = 1;
-        foreach (var (d, u) in _history)
+        foreach (var (d, u) in draw)
         {
             if (d > rawDown) rawDown = d;
             if (u > rawUp)   rawUp   = u;
@@ -364,7 +373,7 @@ public partial class FloatingGraphWindow : Window
         }
 
         // ── Time markers ────────────────────────────────────────────────────────
-        int n = _history.Count;
+        int n = draw.Count;
         for (int sAgo = 10; sAgo < 30; sAgo += 10)
         {
             int sIdx = n - 1 - sAgo * 2;
@@ -391,8 +400,8 @@ public partial class FloatingGraphWindow : Window
         for (int i = 0; i < n; i++)
         {
             double x = n == 1 ? 0 : i * (w / (n - 1));
-            downPts.Add(new Point(x, h - ((double)_history[i].Down / peak) * h * 0.90));
-            upPts.Add(  new Point(x, h - ((double)_history[i].Up   / peak) * h * 0.90));
+            downPts.Add(new Point(x, h - ((double)draw[i].Down / peak) * h * 0.90));
+            upPts.Add(  new Point(x, h - ((double)draw[i].Up   / peak) * h * 0.90));
         }
 
         ChartCanvas.Children.Add(new Path { Data = SmoothPath(downPts, true,  h), Fill   = DownFill   });
