@@ -76,15 +76,6 @@
         <GradientStop Color="{StaticResource ChartUpColor}" Offset="0" />
         <GradientStop Color="#00000000"                     Offset="1" />
     </LinearGradientBrush>
-    <LinearGradientBrush x:Key="HeroDownCardBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#E6F6FC" Offset="0" />
-        <GradientStop Color="#F0FAFE" Offset="1" />
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="HeroUpCardBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FEF5EA" Offset="0" />
-        <GradientStop Color="#FFFAF3" Offset="1" />
-    </LinearGradientBrush>
-
     <!-- Active nav item: subtle teal-tinted surface -->
     <SolidColorBrush x:Key="AccentMutedBrush" Color="#E0F2FA" />
 

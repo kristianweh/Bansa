@@ -71,6 +71,9 @@ public partial class MainWindow : Window
     private int _tempBufHead;    // next write index
     private int _tempBufCount;   // how many entries are valid (ramps up to TempHistLen)
 
+    // Y-axis scale of the overlaid CPU/GPU timeline — cached so the crosshair maps Y identically.
+    private float _ovSMin, _ovSMax = 1;
+
     // ── Ping sparkline ring buffer (Dashboard ping card) ─────────────────────
     private const int PingHistLen = 60;
     private readonly int[] _pingBuf = new int[PingHistLen];
@@ -141,6 +144,16 @@ public partial class MainWindow : Window
         "#5DADE2", "#3B82F6", "#5865F2", "#8B5CF6", "#EC4899",
         "#EF4444", "#F59E0B", "#F39C12", "#10B981", "#06B6D4",
         "#94A3B8",
+    };
+
+    // Domain-accent palettes: cool for Network, warm/thermal for Hardware (first entry = default)
+    private static readonly string[] _networkPalette =
+    {
+        "#00C8F0", "#2D9CFF", "#3B82F6", "#5865F2", "#06B6D4", "#10B981", "#8B5CF6",
+    };
+    private static readonly string[] _hardwarePalette =
+    {
+        "#FF8A3D", "#F97316", "#F59E0B", "#FACC15", "#EF4444", "#FF5C5C", "#EC4899",
     };
 
     public MainWindow()
@@ -252,6 +265,14 @@ public partial class MainWindow : Window
         ApplyBrandImages(ThemeManager.Current);
         ThemeManager.ThemeChanged += ApplyBrandImages;
 
+        ReparentLimitsCards();
+
+        // Reflect the persisted domain (accent already applied at startup in App.OnStartup)
+        DomainHardwareBtn.IsChecked = DomainManager.Current == AppDomainMode.Hardware;
+        DomainNetworkBtn.IsChecked  = DomainManager.Current == AppDomainMode.Network;
+        UpdateSidebarForDomain(DomainManager.Current);
+        if (DomainManager.Current == AppDomainMode.Hardware) NavigateToPanel(2);
+
         UnitBitsRadio.IsChecked  = Vm.UseBitsUnit;
         UnitBytesRadio.IsChecked = !Vm.UseBitsUnit;
 
@@ -259,7 +280,8 @@ public partial class MainWindow : Window
         _dualScale = App.Settings.DualScale;
         DualScaleBtn.IsChecked = _dualScale;
 
-        if (App.Settings.UseWindowsAccent) ApplyOsAccentToResources();
+        // Accent is owned by DomainManager (per-domain dominant color, theme-aware) —
+        // already applied at startup; nothing to do here.
 
         // Apply saved colors to override theme defaults before swatches are built
         Vm.SetDownColor(App.Settings.DownColorHex);
@@ -277,6 +299,8 @@ public partial class MainWindow : Window
         PopulateSwatches(TempHotSwatches,      App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
         PopulateSwatches(PingGoodSwatches,     App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
         PopulateSwatches(PingBadSwatches,      App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
+        PopulateSwatches(NetworkAccentSwatches,  _networkPalette,  App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
+        PopulateSwatches(HardwareAccentSwatches, _hardwarePalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
 
         try
         {
@@ -298,6 +322,8 @@ public partial class MainWindow : Window
                         _appHistory = Vm.AppTickSnapshot();
                         DrawMainChart(history);
                     }
+                    RedrawBandwidthDonut(appList);
+                    RedrawDashThroughput(history);
                     // Keep ping color consistent across every window
                     UpdatePingColor(ping);
                     _floatingGraph?.UpdateChart(
@@ -1363,6 +1389,21 @@ public partial class MainWindow : Window
     // "View all →" on dashboard routes to Network tab
     private void OnDashViewAllClick(object sender, RoutedEventArgs e) => NavigateToPanel(1);
 
+    // Header domain switch: re-skin accent + jump to that domain's primary panel.
+    private void OnDomainClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb || rb.Tag is not string tag) return;
+        if (!Enum.TryParse<AppDomainMode>(tag, out var mode)) return;
+        if (DomainManager.Current == mode) return;
+
+        DomainManager.Apply(mode);
+        App.Settings.Domain = mode.ToString();
+        SettingsManager.Save(App.Settings);
+
+        UpdateSidebarForDomain(mode);
+        NavigateToPanel(mode == AppDomainMode.Hardware ? 2 : 0);
+    }
+
     // ── Navigation helpers ────────────────────────────────────────────────────
 
     private static readonly Duration _fadeInDuration  = new(TimeSpan.FromMilliseconds(220));
@@ -1427,9 +1468,15 @@ public partial class MainWindow : Window
         NavHardware.IsChecked  = idx == 2;
         NavTools.IsChecked     = idx == 3;
         NavHistory.IsChecked   = idx == 4;
-        NavSettings.IsChecked  = idx == 5;
+        NavLimits.IsChecked    = idx == 6;
 
-        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, ToolsPanel, HistoryPanel, SettingsPanel];
+        // History is domain-aware: Network history vs Hardware history.
+        bool hw = DomainManager.Current == AppDomainMode.Hardware;
+        UIElement historyEl = hw ? HardwareHistoryPanel : HistoryPanel;
+        UIElement otherHistory = hw ? HistoryPanel : HardwareHistoryPanel;
+        if (otherHistory.Visibility == Visibility.Visible) FadeOut(otherHistory);
+
+        UIElement[] panels = [DashboardPanel, ProcPanel, HardwareMonitorPanel, ToolsPanel, historyEl, SettingsPanel, LimitsScenariosPanel];
         for (int i = 0; i < panels.Length; i++)
         {
             if (i == idx)
@@ -1443,45 +1490,182 @@ public partial class MainWindow : Window
         }
 
         // Refresh history data whenever the user navigates to that tab.
-        if (idx == 4) HistoryPanel.Reload();
+        if (idx == 4)
+        {
+            if (hw) HardwareHistoryPanel.Reload();
+            else    HistoryPanel.Reload();
+        }
+
+        // Limits & Scenarios: refresh its moved cards + the limited-apps summary.
+        if (idx == 6)
+        {
+            RefreshProfilesList();
+            PopulatePingTargetCombo();
+            RefreshScenarioUI();
+            PopulateLimitedApps();
+        }
     }
 
-    /// <summary>Switch to a Settings sub-tab by tag name.</summary>
-    private void NavigateToSettingsTab(string tabTag)
+    private void OnSettingsGearClick(object sender, RoutedEventArgs e) => NavigateToPanel(5);
+
+    /// <summary>Show only the nav items relevant to the active domain (mockup-style per-mode tabs).</summary>
+    private void UpdateSidebarForDomain(AppDomainMode mode)
     {
-        string parent = tabTag switch
+        bool net = mode == AppDomainMode.Network;
+        NavDashboard.Visibility = net ? Visibility.Visible : Visibility.Collapsed;
+        NavProcesses.Visibility = net ? Visibility.Visible : Visibility.Collapsed;
+        NavLimits.Visibility    = net ? Visibility.Visible : Visibility.Collapsed;
+        NavHardware.Visibility  = net ? Visibility.Collapsed : Visibility.Visible;
+        // Tools: Hardware mode only. Network tabs = Dashboard · Live Traffic · Limits & Scenarios · History.
+        NavTools.Visibility     = net ? Visibility.Collapsed : Visibility.Visible;
+        // History stays visible in both modes.
+    }
+
+    // ── Limits & Scenarios panel ───────────────────────────────────────────────
+
+    private bool _limitsCardsMoved;
+
+    /// <summary>
+    /// Relocates the Limit Profiles, Global Cap, Ping Monitor and Scenario editor cards
+    /// out of Settings into the Limits &amp; Scenarios panel. Done by re-parenting the live
+    /// elements so all their x:Names and event handlers keep working unchanged.
+    /// </summary>
+    private void ReparentLimitsCards()
+    {
+        if (_limitsCardsMoved) return;
+        _limitsCardsMoved = true;
+        MoveCard(CardLimitProfiles);
+        MoveCard(CardGlobalCap);
+        MoveCard(CardPingMonitor);
+        MoveCard(CardScenarios);
+
+        void MoveCard(FrameworkElement card)
         {
-            "shortcuts" or "system" or "behavior" or "units" => "general",
-            "connection" or "profiles" or "ping"
-                or "speedtest" or "test" or "network"        => "network",
-            "appearance" or "colors"                         => "appearance",
-            _                                                => tabTag
-        };
-        SettingsTabBtnGeneral.IsChecked    = parent == "general";
-        SettingsTabBtnNetwork.IsChecked    = parent == "network";
-        SettingsTabBtnAppearance.IsChecked = parent == "appearance";
-        SettingsTabGeneral.Visibility    = parent == "general"    ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabNetwork.Visibility    = parent == "network"    ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTabAppearance.Visibility = parent == "appearance" ? Visibility.Visible : Visibility.Collapsed;
-        if (parent == "network") RefreshConnectionSpeedUI();
+            if (card.Parent is System.Windows.Controls.Panel p)
+            {
+                p.Children.Remove(card);
+                LimitsHost.Children.Add(card);
+            }
+        }
+    }
+
+    /// <summary>Read-only summary of apps that currently have an up/down limit or are blocked.</summary>
+    private void PopulateLimitedApps()
+    {
+        LimitedAppsList.Items.Clear();
+
+        var paths = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var k in App.Settings.AppUploadLimitsKBs.Keys)   paths.Add(k);
+        foreach (var k in App.Settings.AppDownloadLimitsKBs.Keys) paths.Add(k);
+
+        foreach (var path in paths)
+        {
+            int up   = App.Settings.AppUploadLimitsKBs.TryGetValue(path, out var u) ? u : 0;
+            int down = App.Settings.AppDownloadLimitsKBs.TryGetValue(path, out var d) ? d : 0;
+            if (up <= 0 && down <= 0) continue;
+            LimitedAppsList.Items.Add(BuildLimitedAppRow(path,
+                System.IO.Path.GetFileNameWithoutExtension(path), up, down));
+        }
+
+        bool any = LimitedAppsList.Items.Count > 0;
+        LimitedAppsEmpty.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private FrameworkElement BuildLimitedAppRow(string path, string name, int up, int down)
+    {
+        var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var nm = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, Foreground = (Brush)FindResource("TextBrush") };
+        Grid.SetColumn(nm, 0);
+        var upTb = new TextBlock { Text = up > 0 ? up.ToString() : "—", HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("RobotoMonoFamily"),
+            Foreground = (Brush)FindResource(up > 0 ? "ChartUpBrush" : "MutedTextBrush") };
+        Grid.SetColumn(upTb, 1);
+        var dnTb = new TextBlock { Text = down > 0 ? down.ToString() : "—", HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("RobotoMonoFamily"),
+            Foreground = (Brush)FindResource(down > 0 ? "ChartDownBrush" : "MutedTextBrush") };
+        Grid.SetColumn(dnTb, 2);
+
+        var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        var editBtn = new System.Windows.Controls.Button { Content = "Edit", Padding = new Thickness(10, 3, 10, 3), FontSize = 11, Cursor = Cursors.Hand };
+        editBtn.Click += (_, _) => EditLimitInline(path, name, up, down);
+        var clearBtn = new System.Windows.Controls.Button { Content = "Clear", Padding = new Thickness(10, 3, 10, 3), FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0), Cursor = Cursors.Hand };
+        clearBtn.Click += async (_, _) => { await Vm.SetLimitByPathAsync(path, 0, 0); PopulateLimitedApps(); };
+        actions.Children.Add(editBtn); actions.Children.Add(clearBtn);
+        Grid.SetColumn(actions, 3);
+
+        g.Children.Add(nm); g.Children.Add(upTb); g.Children.Add(dnTb); g.Children.Add(actions);
+        return g;
+    }
+
+    private async void EditLimitInline(string path, string name, int up, int down)
+    {
+        var dlg = new SetLimitWindow(name, up, down,
+                                     App.Settings.ConnectionUploadMbps, App.Settings.ConnectionDownloadMbps,
+                                     false) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            await Vm.SetLimitByPathAsync(path, dlg.UploadKbps, dlg.DownloadKbps);
+            PopulateLimitedApps();
+        }
     }
 
     // ── Dashboard card click handlers ────────────────────────────────────────
 
     private void OnDashBandwidthClick(object sender, MouseButtonEventArgs e) => NavigateToPanel(1);
-    private void OnDashHardwareClick(object sender, MouseButtonEventArgs e)  => NavigateToPanel(2);
-    private void OnDashPingClick(object sender, MouseButtonEventArgs e)
+    private void OnDashPingClick(object sender, MouseButtonEventArgs e)      => NavigateToLimitsCard(CardPingMonitor);
+
+    // ── Sidebar STATUS card clicks → respective tabs ─────────────────────────
+
+    /// <summary>CPU/GPU box → Hardware dashboard (switches domain so accent + nav follow).</summary>
+    private void OnSidebarHwClick(object sender, MouseButtonEventArgs e)
     {
-        NavigateToPanel(5);
-        NavigateToSettingsTab("ping");
+        EnsureDomain(AppDomainMode.Hardware);
+        NavigateToPanel(2);
     }
 
-    // ── Sidebar ping card click → Settings → Ping ────────────────────────────
-
-    private void OnSidebarPingClick(object sender, MouseButtonEventArgs e)
+    /// <summary>Down/Up totals box → Network dashboard.</summary>
+    private void OnSidebarBandwidthClick(object sender, MouseButtonEventArgs e)
     {
-        NavigateToPanel(5);
-        NavigateToSettingsTab("ping");
+        EnsureDomain(AppDomainMode.Network);
+        NavigateToPanel(0);
+    }
+
+    /// <summary>Ping box → Ping Monitor card in Limits &amp; Scenarios.</summary>
+    private void OnSidebarPingClick(object sender, MouseButtonEventArgs e)
+        => NavigateToLimitsCard(CardPingMonitor);
+
+    /// <summary>
+    /// Applies a domain (accent reskin + per-domain sidebar + header toggle state) WITHOUT
+    /// navigating — callers decide the destination panel. No-op when already in that domain.
+    /// </summary>
+    private void EnsureDomain(AppDomainMode mode)
+    {
+        if (DomainManager.Current == mode) return;
+        DomainManager.Apply(mode);
+        App.Settings.Domain = mode.ToString();
+        SettingsManager.Save(App.Settings);
+        UpdateSidebarForDomain(mode);
+        DomainHardwareBtn.IsChecked = mode == AppDomainMode.Hardware;
+        DomainNetworkBtn.IsChecked  = mode == AppDomainMode.Network;
+    }
+
+    /// <summary>Ensures Network domain, opens Limits &amp; Scenarios (panel 6) and scrolls to a card.</summary>
+    private void NavigateToLimitsCard(FrameworkElement card)
+    {
+        EnsureDomain(AppDomainMode.Network);
+        NavigateToPanel(6);
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+            new Action(() => card.BringIntoView()));
     }
 
     // Keyboard activation for the click-only dashboard / sidebar cards. Plain Borders aren't
@@ -1494,10 +1678,12 @@ public partial class MainWindow : Window
         e.Handled = true;
         switch (action)
         {
-            case "nav:network":  NavigateToPanel(1); break;
-            case "nav:hardware": NavigateToPanel(2); break;
-            case "ping":         NavigateToPanel(5); NavigateToSettingsTab("ping"); break;
-            case "scenario":     _ = Vm.ToggleScenarioCommand.ExecuteAsync(null); break;
+            case "nav:network":   NavigateToPanel(1); break;
+            case "nav:dashboard": EnsureDomain(AppDomainMode.Network); NavigateToPanel(0); break;
+            case "nav:hardware":  EnsureDomain(AppDomainMode.Hardware); NavigateToPanel(2); break;
+            case "ping":          NavigateToLimitsCard(CardPingMonitor); break;
+            case "scenario":      _ = Vm.ToggleScenarioCommand.ExecuteAsync(null); break;
+            case "globalcap":     ToggleGlobalCap(); break;
         }
     }
 
@@ -1509,62 +1695,10 @@ public partial class MainWindow : Window
 
         // Feed the latest reading immediately (sensor might already have data)
         if (hw.Latest != HardwareSnapshot.Empty)
-        {
             UpdateHardwarePanel(hw.Latest);
-            UpdateDashboardHardware(hw.Latest);
-        }
 
         // Subscribe for live updates
-        hw.Sampled += snap => Dispatcher.InvokeAsync(() =>
-        {
-            UpdateHardwarePanel(snap);
-            UpdateDashboardHardware(snap);
-        });
-    }
-
-    // ── Dashboard hardware mini-cards ─────────────────────────────────────────
-    private void UpdateDashboardHardware(HardwareSnapshot snap)
-    {
-        // CPU
-        if (!string.IsNullOrEmpty(snap.CpuName))
-            DashCpuName.Text = snap.CpuName
-                .Replace("Intel(R) Core(TM) ", "")
-                .Replace("Intel Core ", "")
-                .Replace(" Processor", "");
-        DashCpuPct.Text  = snap.CpuTemp > 0 ? $"{snap.CpuTemp:0}" : "—";
-        DashCpuBar.Value = snap.CpuLoad;
-        DashCpuTemp.Text = snap.CpuLoad > 0 ? $"{snap.CpuLoad:0}%" : "";
-        DashCpuFreq.Text = snap.CpuFreqMHz > 0 ? $"{snap.CpuFreqMHz / 1000f:0.0} GHz" : "";
-        if (snap.CpuTemp > 0)
-        {
-            var cpuTempBrush = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
-            DashCpuPct.Foreground      = cpuTempBrush;
-            DashCpuTempSign.Foreground = cpuTempBrush;
-        }
-
-        // GPU
-        DashGpuPct.Text  = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";
-        DashGpuBar.Value = snap.GpuLoad;
-        DashGpuTemp.Text = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}°C" : "";
-        DashGpuClock.Text = snap.GpuCoreMHz > 0 ? $"{snap.GpuCoreMHz:0} MHz" : "";
-        if (snap.GpuTemp > 0)
-        {
-            var gpuTempBrush = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
-            DashGpuPct.Foreground      = gpuTempBrush;
-            DashGpuTempSign.Foreground = gpuTempBrush;
-        }
-        if (!string.IsNullOrEmpty(snap.GpuName))
-            DashGpuName.Text = snap.GpuName.Replace("NVIDIA GeForce ", "").Replace("AMD Radeon ", "");
-
-        // RAM
-        if (snap.RamTotalGb > 0)
-        {
-            DashRamPct.Text   = $"{snap.RamPct:0}";
-            DashRamBar.Maximum = snap.RamTotalGb;
-            DashRamBar.Value   = snap.RamUsedGb;
-            DashRamUsed.Text   = $"{snap.RamUsedGb:0.0} GB";
-            DashRamTotal.Text  = $"of {snap.RamTotalGb:0.0} GB";
-        }
+        hw.Sampled += snap => Dispatcher.InvokeAsync(() => UpdateHardwarePanel(snap));
     }
 
     // ── Color heat helpers ────────────────────────────────────────────────────
@@ -1792,6 +1926,10 @@ public partial class MainWindow : Window
         DrawTempChart(RamUsageChart, _ramPctBuf,  _tempBufHead, _tempBufCount,
                       Color.FromRgb(0x3D, 0xBA, 0x6F), "%");   // SuccessBrush green
 
+        // Hero: thermal radial gauges + overlaid CPU/GPU temperature timeline
+        RedrawHwHero(snap);
+        RedrawSidebarThermals(snap);
+
         // Pulse the refresh dot so users can see data is live
         HwRefreshDot.Opacity = 1.0;
         var fade = new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.35,
@@ -1900,6 +2038,326 @@ public partial class MainWindow : Window
         canvas.Children.Add(minTb);
     }
 
+    // ── Sidebar status: compact CPU/GPU temp gauges ───────────────────────────
+
+    private void OnSidebarGaugeSizeChanged(object sender, SizeChangedEventArgs e)
+        => RedrawSidebarThermals(HardwareMonitor.Instance?.Latest ?? HardwareSnapshot.Empty);
+
+    private void RedrawSidebarThermals(HardwareSnapshot snap)
+    {
+        void DrawSb(Canvas c, double temp, Color col)
+        {
+            c.Children.Clear();
+            double w = c.ActualWidth, h = c.ActualHeight;
+            if (w <= 0 || h <= 0) return;
+            double cx = w / 2, cy = h / 2, r = Math.Min(w, h) / 2 - 5;
+            if (r <= 0) return;
+            AddArc(c, cx, cy, r, 225, 270, ChartChrome("BgBrush", Color.FromRgb(0x0B, 0x0F, 0x14)), 6);
+            if (temp > 0)
+            {
+                double frac = Math.Clamp((temp - 30) / 65.0, 0, 1);
+                if (frac > 0.002) AddArc(c, cx, cy, r, 225, 270 * frac, new SolidColorBrush(col), 6);
+            }
+        }
+
+        if (snap.CpuTemp > 0)
+        {
+            var col = TempHeatColor(snap.CpuTemp);
+            SbCpuTemp.Text = $"{snap.CpuTemp:0}°";
+            SbCpuTemp.Foreground = new SolidColorBrush(col);
+            DrawSb(SbCpuGauge, snap.CpuTemp, col);
+        }
+        else { SbCpuTemp.Text = "—"; DrawSb(SbCpuGauge, 0, default); }
+
+        if (snap.GpuTemp > 0)
+        {
+            var col = TempHeatColor(snap.GpuTemp);
+            SbGpuTemp.Text = $"{snap.GpuTemp:0}°";
+            SbGpuTemp.Foreground = new SolidColorBrush(col);
+            DrawSb(SbGpuGauge, snap.GpuTemp, col);
+        }
+        else { SbGpuTemp.Text = "—"; DrawSb(SbGpuGauge, 0, default); }
+    }
+
+    // ── Hardware hero: thermal radial gauges + overlaid CPU/GPU temp timeline ──
+
+    private void OnHwHeroSizeChanged(object sender, SizeChangedEventArgs e)
+        => RedrawHwHero(HardwareMonitor.Instance?.Latest ?? HardwareSnapshot.Empty);
+
+    private void RedrawHwHero(HardwareSnapshot snap)
+    {
+        // CPU — temperature gauge mapped across 30–95 °C, thermal-colored
+        if (snap.CpuTemp > 0)
+        {
+            var c = TempHeatColor(snap.CpuTemp);
+            CpuGaugeVal.Text = $"{snap.CpuTemp:0}";
+            CpuGaugeVal.Foreground = new SolidColorBrush(c);
+            CpuGaugeSub.Text = $"load {snap.CpuLoad:0}%";
+            DrawGauge(CpuGauge, snap.CpuTemp, 30, 95, c);
+        }
+        else { CpuGaugeVal.Text = "—"; CpuGaugeSub.Text = "load —%"; DrawGauge(CpuGauge, 0, 30, 95, default); }
+
+        // GPU
+        if (snap.GpuTemp > 0)
+        {
+            var c = TempHeatColor(snap.GpuTemp);
+            GpuGaugeVal.Text = $"{snap.GpuTemp:0}";
+            GpuGaugeVal.Foreground = new SolidColorBrush(c);
+            GpuGaugeSub.Text = $"load {snap.GpuLoad:0}%";
+            DrawGauge(GpuGauge, snap.GpuTemp, 30, 95, c);
+        }
+        else { GpuGaugeVal.Text = "—"; GpuGaugeSub.Text = "load —%"; DrawGauge(GpuGauge, 0, 30, 95, default); }
+
+        // RAM — % used, colored with the RAM chart color
+        if (snap.RamTotalGb > 0)
+        {
+            var c = (TryFindResource("ChartRamBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x3D, 0xBA, 0x6F);
+            RamGaugeVal.Text = $"{snap.RamUsedGb:0}";
+            RamGaugeVal.Foreground = new SolidColorBrush(c);
+            RamGaugeSub.Text = $"{snap.RamPct:0}% · {snap.RamTotalGb:0} GB";
+            DrawGauge(RamGauge, snap.RamPct, 0, 100, c);
+        }
+        else { RamGaugeVal.Text = "—"; RamGaugeSub.Text = "—%"; DrawGauge(RamGauge, 0, 0, 100, default); }
+
+        DrawOverlayTempChart(OverlayTempChart);
+    }
+
+    /// <summary>270° radial gauge: subtle track + value arc, gap centered at the bottom.</summary>
+    private static void DrawGauge(Canvas c, double value, double min, double max, Color color)
+    {
+        c.Children.Clear();
+        double w = c.ActualWidth, h = c.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        double cx = w / 2, cy = h / 2, r = Math.Min(w, h) / 2 - 10;
+        if (r <= 0) return;
+
+        AddArc(c, cx, cy, r, 225, 270, ChartChrome("PanelAltBrush", Color.FromRgb(0x1C, 0x25, 0x30)), 9);
+
+        double frac = max > min ? Math.Clamp((value - min) / (max - min), 0, 1) : 0;
+        if (frac > 0.002)
+            AddArc(c, cx, cy, r, 225, 270 * frac, new SolidColorBrush(color), 9);
+    }
+
+    /// <summary>Stroke an arc starting at <paramref name="startDeg"/> sweeping clockwise by <paramref name="sweepDeg"/>.</summary>
+    private static void AddArc(Canvas c, double cx, double cy, double r,
+                               double startDeg, double sweepDeg, Brush stroke, double thick)
+    {
+        double a0 = startDeg * Math.PI / 180.0;
+        double a1 = (startDeg - sweepDeg) * Math.PI / 180.0;   // clockwise = decreasing angle
+        var p0 = new Point(cx + r * Math.Cos(a0), cy - r * Math.Sin(a0));
+        var p1 = new Point(cx + r * Math.Cos(a1), cy - r * Math.Sin(a1));
+        var fig = new PathFigure { StartPoint = p0, IsFilled = false };
+        fig.Segments.Add(new ArcSegment(p1, new Size(r, r), 0, sweepDeg > 180, SweepDirection.Clockwise, true));
+        c.Children.Add(new Path
+        {
+            Data = new PathGeometry(new[] { fig }),
+            Stroke = stroke,
+            StrokeThickness = thick,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        });
+    }
+
+    /// <summary>CPU and GPU temperature lines overlaid on one shared time axis (WiFiman-style).</summary>
+    private void DrawOverlayTempChart(Canvas canvas)
+    {
+        canvas.Children.Clear();
+        int count = _tempBufCount, head = _tempBufHead, len = TempHistLen;
+        if (count < 2) return;
+        double w = canvas.ActualWidth, h = canvas.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        float dMin = float.MaxValue, dMax = float.MinValue;
+        void Scan(float[] buf)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                float v = buf[(head - count + i + len) % len];
+                if (v > 0) { if (v < dMin) dMin = v; if (v > dMax) dMax = v; }
+            }
+        }
+        Scan(_cpuTempBuf); Scan(_gpuTempBuf);
+        if (dMax < dMin) { dMin = 0; dMax = 1; }
+        if (dMax <= dMin) dMax = dMin + 1;
+        float range = dMax - dMin, sMin = dMin - range * 0.12f, sMax = dMax + range * 0.12f;
+        _ovSMin = sMin; _ovSMax = sMax;   // cache for the crosshair
+
+        var grid = ChartChrome("BorderBrush", Color.FromArgb(40, 255, 255, 255));
+        for (int g = 1; g <= 3; g++)
+        {
+            double yy = h * g / 4.0;
+            canvas.Children.Add(new System.Windows.Shapes.Line { X1 = 0, X2 = w, Y1 = yy, Y2 = yy, Stroke = grid, StrokeThickness = 1 });
+        }
+
+        void DrawSeries(float[] buf, Color col)
+        {
+            // Collect contiguous runs (a gap is opened wherever a sample is unavailable).
+            var runs = new List<List<Point>>();
+            List<Point>? cur = null;
+            Point last = new(double.NaN, double.NaN);
+            for (int i = 0; i < count; i++)
+            {
+                float v = buf[(head - count + i + len) % len];
+                if (v <= 0) { cur = null; continue; }   // gap over unavailable samples
+                double x = i * (w / (count - 1));
+                double y = h - ((v - sMin) / (sMax - sMin)) * h;
+                var p = new Point(x, Math.Clamp(y, 0, h));
+                if (cur == null) { cur = new List<Point>(); runs.Add(cur); }
+                cur.Add(p);
+                last = p;
+            }
+            if (runs.Count == 0) return;
+
+            // Soft vertical gradient under the line — fades to transparent at the bottom (mockup look).
+            var grad = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x70, col.R, col.G, col.B), 0));
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x14, col.R, col.G, col.B), 0.7));
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, col.R, col.G, col.B), 1));
+            var stroke = new SolidColorBrush(col);
+
+            foreach (var run in runs)
+            {
+                if (run.Count >= 2)
+                    canvas.Children.Add(new Path { Data = SmoothTempPath(run, true, h), Fill = grad });
+                canvas.Children.Add(new Path
+                {
+                    Data = SmoothTempPath(run, false, h),
+                    Stroke = stroke, StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round
+                });
+            }
+            if (!double.IsNaN(last.X))
+            {
+                var dot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = new SolidColorBrush(col) };
+                Canvas.SetLeft(dot, last.X - 3.5); Canvas.SetTop(dot, last.Y - 3.5);
+                canvas.Children.Add(dot);
+            }
+        }
+
+        var cpuC = (TryFindResource("ChartCpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x5D, 0xAD, 0xE2);
+        var gpuC = (TryFindResource("ChartGpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0xFF, 0x88, 0x32);
+        DrawSeries(_cpuTempBuf, cpuC);
+        DrawSeries(_gpuTempBuf, gpuC);
+
+        var lblBrush = ChartChrome("SubtleTextBrush", Color.FromArgb(140, 200, 210, 220));
+        void Label(string t, double top)
+        {
+            var tb = new TextBlock { Text = t, FontSize = 9, Foreground = lblBrush, IsHitTestVisible = false };
+            Canvas.SetLeft(tb, 3); Canvas.SetTop(tb, top);
+            canvas.Children.Add(tb);
+        }
+        Label($"{dMax:0}°", 1);
+        Label($"{dMin:0}°", h - 13);
+    }
+
+    /// <summary>
+    /// Catmull-Rom → cubic-bezier smoothing for a temperature run. When
+    /// <paramref name="fillToBottom"/> is set, the figure is closed down to the baseline
+    /// (y = h) so it can be filled with a gradient.
+    /// </summary>
+    private static PathGeometry SmoothTempPath(List<Point> pts, bool fillToBottom, double h)
+    {
+        if (pts.Count < 2) return new PathGeometry();
+        var fig = new PathFigure { StartPoint = pts[0], IsFilled = fillToBottom };
+        for (int i = 0; i < pts.Count - 1; i++)
+        {
+            var p0 = i > 0 ? pts[i - 1] : pts[i];
+            var p1 = pts[i];
+            var p2 = pts[i + 1];
+            var p3 = i + 2 < pts.Count ? pts[i + 2] : pts[i + 1];
+            var c1 = new Point(p1.X + (p2.X - p0.X) / 6.0, p1.Y + (p2.Y - p0.Y) / 6.0);
+            var c2 = new Point(p2.X - (p3.X - p1.X) / 6.0, p2.Y - (p3.Y - p1.Y) / 6.0);
+            fig.Segments.Add(new BezierSegment(c1, c2, p2, true));
+        }
+        if (fillToBottom)
+        {
+            fig.Segments.Add(new LineSegment(new Point(pts[^1].X, h), false));
+            fig.Segments.Add(new LineSegment(new Point(pts[0].X,  h), false));
+            fig.IsClosed = true;
+        }
+        return new PathGeometry(new[] { fig });
+    }
+
+    // ── Dashboard throughput timeline (mirrored: down up / up down) ────────────
+
+    private IReadOnlyList<(long Down, long Up)>? _lastDashThroughput;
+
+    private void OnDashThroughputSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_lastDashThroughput is not null) RedrawDashThroughput(_lastDashThroughput);
+    }
+
+    /// <summary>
+    /// UniFi-style mirrored area chart: download fills upward from a centre axis,
+    /// upload fills downward, each with a soft gradient that fades away from the axis.
+    /// </summary>
+    private void RedrawDashThroughput(IReadOnlyList<(long Down, long Up)> history)
+    {
+        _lastDashThroughput = history;
+        var canvas = DashThroughputChart;
+        canvas.Children.Clear();
+        if (history is null) return;
+
+        double w = canvas.ActualWidth, h = canvas.ActualHeight;
+        int total = history.Count;
+        if (w <= 0 || h <= 0 || total < 2) return;
+
+        // Last 120 samples (~60 s) window.
+        int win   = Math.Min(total, 120);
+        int start = total - win;
+        double mid = h / 2.0;
+
+        long peak = 1;
+        for (int i = start; i < total; i++)
+            peak = Math.Max(peak, Math.Max(history[i].Down, history[i].Up));
+
+        // Centre axis + faint guide lines
+        var axis = ChartChrome("BorderBrush", Color.FromArgb(60, 255, 255, 255));
+        canvas.Children.Add(new System.Windows.Shapes.Line { X1 = 0, X2 = w, Y1 = mid, Y2 = mid, Stroke = axis, StrokeThickness = 1 });
+        var faint = ChartChrome("BorderBrush", Color.FromArgb(26, 255, 255, 255));
+        canvas.Children.Add(new System.Windows.Shapes.Line { X1 = 0, X2 = w, Y1 = mid / 2,        Y2 = mid / 2,        Stroke = faint, StrokeThickness = 1, StrokeDashArray = _dashTwo });
+        canvas.Children.Add(new System.Windows.Shapes.Line { X1 = 0, X2 = w, Y1 = mid + mid / 2,  Y2 = mid + mid / 2,  Stroke = faint, StrokeThickness = 1, StrokeDashArray = _dashTwo });
+
+        var downPts = new List<Point>(win);
+        var upPts   = new List<Point>(win);
+        for (int i = 0; i < win; i++)
+        {
+            var (d, u) = history[start + i];
+            double x  = win == 1 ? 0 : i * (w / (win - 1));
+            downPts.Add(new Point(x, mid - (double)d / peak * (mid * 0.92)));
+            upPts.Add(  new Point(x, mid + (double)u / peak * (mid * 0.92)));
+        }
+
+        var downC = (TryFindResource("ChartDownBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x5D, 0xAD, 0xE2);
+        var upC   = (TryFindResource("ChartUpBrush")   as SolidColorBrush)?.Color ?? Color.FromRgb(0xF3, 0x9C, 0x12);
+
+        // Download fill: opaque at the axis (bottom of its bbox), fading up toward the peak.
+        var downGrad = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        downGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, downC.R, downC.G, downC.B), 0));
+        downGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x18, downC.R, downC.G, downC.B), 0.4));
+        downGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x80, downC.R, downC.G, downC.B), 1));
+
+        // Upload fill: opaque at the axis (top of its bbox), fading down.
+        var upGrad = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        upGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x80, upC.R, upC.G, upC.B), 0));
+        upGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x18, upC.R, upC.G, upC.B), 0.6));
+        upGrad.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, upC.R, upC.G, upC.B), 1));
+
+        canvas.Children.Add(new Path { Data = SmoothTempPath(downPts, true,  mid), Fill = downGrad });
+        canvas.Children.Add(new Path { Data = SmoothTempPath(upPts,   true,  mid), Fill = upGrad });
+        canvas.Children.Add(new Path { Data = SmoothTempPath(downPts, false, mid), Stroke = new SolidColorBrush(downC), StrokeThickness = 1.8, StrokeLineJoin = PenLineJoin.Round });
+        canvas.Children.Add(new Path { Data = SmoothTempPath(upPts,   false, mid), Stroke = new SolidColorBrush(upC),   StrokeThickness = 1.8, StrokeLineJoin = PenLineJoin.Round });
+
+        // Live dots at the latest sample
+        void Dot(Point p, Color c)
+        {
+            var dot = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(c) };
+            Canvas.SetLeft(dot, p.X - 3); Canvas.SetTop(dot, p.Y - 3);
+            canvas.Children.Add(dot);
+        }
+        Dot(downPts[^1], downC);
+        Dot(upPts[^1],   upC);
+    }
+
     // ── Hardware chart crosshair ──────────────────────────────────────────────
 
     private void OnCpuChartMouseMove(object sender, MouseEventArgs e)
@@ -1968,6 +2426,182 @@ public partial class MainWindow : Window
         Canvas.SetLeft(bubble, Math.Max(0, bx));
         Canvas.SetTop(bubble, 2);
         overlay.Children.Add(bubble);
+    }
+
+    // Crosshair for the overlaid CPU/GPU timeline — reads out BOTH series at the hovered time.
+    private void OnOverlayTempMouseMove(object sender, MouseEventArgs e)
+    {
+        var overlay = OverlayTempOverlay;
+        overlay.Children.Clear();
+        int count = _tempBufCount, head = _tempBufHead, len = TempHistLen;
+        if (count < 2) return;
+        double w = overlay.ActualWidth, h = overlay.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        var pos = e.GetPosition(overlay);
+        int idx = Math.Clamp((int)Math.Round(pos.X / w * (count - 1)), 0, count - 1);
+        double lineX = idx * (w / (count - 1));
+        float cpu = _cpuTempBuf[(head - count + idx + len) % len];
+        float gpu = _gpuTempBuf[(head - count + idx + len) % len];
+
+        overlay.Children.Add(new System.Windows.Shapes.Line
+        {
+            X1 = lineX, Y1 = 0, X2 = lineX, Y2 = h,
+            Stroke = new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)),
+            StrokeThickness = 1, IsHitTestVisible = false, StrokeDashArray = _dashTwo
+        });
+
+        var cpuC = (TryFindResource("ChartCpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x5D, 0xAD, 0xE2);
+        var gpuC = (TryFindResource("ChartGpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0xFF, 0x88, 0x32);
+
+        void Dot(float v, Color col)
+        {
+            if (v <= 0) return;
+            double y = Math.Clamp(h - ((v - _ovSMin) / (_ovSMax - _ovSMin)) * h, 0, h);
+            var d = new System.Windows.Shapes.Ellipse
+            {
+                Width = 9, Height = 9,
+                Stroke = new SolidColorBrush(col), StrokeThickness = 2,
+                Fill = new SolidColorBrush(Color.FromArgb(230, 14, 16, 26)),
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(d, lineX - 4.5); Canvas.SetTop(d, y - 4.5);
+            overlay.Children.Add(d);
+        }
+        Dot(cpu, cpuC); Dot(gpu, gpuC);
+
+        var sp = new StackPanel();
+        if (cpu > 0) sp.Children.Add(new TextBlock { Text = $"CPU {cpu:0}°", FontSize = 9, FontFamily = new System.Windows.Media.FontFamily("Consolas"), Foreground = new SolidColorBrush(cpuC), IsHitTestVisible = false });
+        if (gpu > 0) sp.Children.Add(new TextBlock { Text = $"GPU {gpu:0}°", FontSize = 9, FontFamily = new System.Windows.Media.FontFamily("Consolas"), Foreground = new SolidColorBrush(gpuC), IsHitTestVisible = false });
+        if (sp.Children.Count == 0) return;
+
+        var bubble = new Border
+        {
+            Child = sp,
+            Background = new SolidColorBrush(Color.FromArgb(210, 14, 16, 26)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 3, 6, 3), IsHitTestVisible = false
+        };
+        bubble.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double bx = lineX + 7;
+        if (bx + bubble.DesiredSize.Width > w) bx = lineX - bubble.DesiredSize.Width - 7;
+        Canvas.SetLeft(bubble, Math.Max(0, bx));
+        Canvas.SetTop(bubble, 2);
+        overlay.Children.Add(bubble);
+    }
+
+    // ── Network dashboard: per-app bandwidth-share donut ───────────────────────
+
+    private List<AppRowViewModel>? _lastDonutApps;
+
+    private static readonly Color[] _donutColors =
+    {
+        Color.FromRgb(0x2D, 0x9C, 0xFF), Color.FromRgb(0x6F, 0xD0, 0xFF),
+        Color.FromRgb(0x9B, 0x8C, 0xFF), Color.FromRgb(0x3E, 0xCF, 0x8E),
+    };
+    private static readonly Color _donutOther = Color.FromRgb(0x3A, 0x46, 0x54);
+
+    private void OnBandwidthDonutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_lastDonutApps is not null) RedrawBandwidthDonut(_lastDonutApps);
+    }
+
+    private void RedrawBandwidthDonut(List<AppRowViewModel> apps)
+    {
+        _lastDonutApps = apps;
+        var canvas = BandwidthDonut;
+        canvas.Children.Clear();
+        DonutLegend.Children.Clear();
+
+        long total = 0;
+        foreach (var a in apps) total += a.BytesInPerSec;
+
+        // Center readout — split "84.2 MB/s" into number + unit, honoring the unit setting
+        if (total > 0)
+        {
+            string rate = Format.Rate(total);
+            int sp = rate.IndexOf(' ');
+            DonutTotalVal.Text  = sp > 0 ? rate[..sp] : rate;
+            DonutTotalUnit.Text = sp > 0 ? rate[(sp + 1)..] : "total";
+        }
+        else { DonutTotalVal.Text = "—"; DonutTotalUnit.Text = "idle"; }
+
+        double w = canvas.ActualWidth, h = canvas.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        DrawDonutTrack(canvas, w, h);
+        if (total <= 0) return;
+
+        var top = apps.Where(a => a.BytesInPerSec > 0)
+                      .OrderByDescending(a => a.BytesInPerSec)
+                      .ToList();
+        if (top.Count == 0) return;
+
+        const int MaxSegs = 4;
+        var segs = new List<(string name, long bytes, Color col)>();
+        for (int i = 0; i < top.Count && i < MaxSegs; i++)
+            segs.Add((top[i].Name, top[i].BytesInPerSec, _donutColors[i % _donutColors.Length]));
+        long other = total - segs.Sum(s => s.bytes);
+        if (other > 0) segs.Add(($"Other ({top.Count - segs.Count})", other, _donutOther));
+
+        double cx = w / 2, cy = h / 2, r = Math.Min(w, h) / 2 - 8;
+        double startDeg = 90;   // 12 o'clock, sweeping clockwise
+        foreach (var s in segs)
+        {
+            double sweep = Math.Min((double)s.bytes / total * 360.0, 359.5);
+            if (sweep < 0.5) continue;
+            AddArc(canvas, cx, cy, r, startDeg, sweep, new SolidColorBrush(s.col), 14);
+            startDeg -= sweep;
+        }
+
+        foreach (var s in segs)
+            DonutLegend.Children.Add(BuildLegendRow(s.name, s.col, Format.Rate(s.bytes)));
+    }
+
+    private void DrawDonutTrack(Canvas c, double w, double h)
+    {
+        double r = Math.Min(w, h) / 2 - 8;
+        var ring = new System.Windows.Shapes.Ellipse
+        {
+            Width = 2 * r, Height = 2 * r,
+            Stroke = ChartChrome("PanelAltBrush", Color.FromRgb(0x1C, 0x25, 0x30)),
+            StrokeThickness = 14
+        };
+        Canvas.SetLeft(ring, w / 2 - r); Canvas.SetTop(ring, h / 2 - r);
+        c.Children.Add(ring);
+    }
+
+    private FrameworkElement BuildLegendRow(string name, Color col, string valueText)
+    {
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var sw = new Border
+        {
+            Width = 9, Height = 9, CornerRadius = new CornerRadius(3),
+            Background = new SolidColorBrush(col), Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(sw, 0);
+        var nm = new TextBlock
+        {
+            Text = name, FontSize = 12, Foreground = (Brush)FindResource("TextBrush"),
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        Grid.SetColumn(nm, 1);
+        var vl = new TextBlock
+        {
+            Text = valueText, FontSize = 11,
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("RobotoMonoFamily"),
+            Foreground = (Brush)FindResource("SubtleTextBrush"),
+            Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(vl, 2);
+        g.Children.Add(sw); g.Children.Add(nm); g.Children.Add(vl);
+        return g;
     }
 
     // ────────── App grid column sorting (keeps SortPriority as locked primary key) ──────────
@@ -2176,9 +2810,12 @@ public partial class MainWindow : Window
     private void OnUnitBitsClick(object sender, RoutedEventArgs e)  => Vm.UseBitsUnit = true;
 
     private void PopulateSwatches(ItemsControl host, string currentHex, Action<string> onPick)
+        => PopulateSwatches(host, _palette, currentHex, onPick);
+
+    private void PopulateSwatches(ItemsControl host, IReadOnlyList<string> palette, string currentHex, Action<string> onPick)
     {
         host.Items.Clear();
-        foreach (var hex in _palette)
+        foreach (var hex in palette)
         {
             var color = (Color)ColorConverter.ConvertFromString(hex);
             var border = new Border
@@ -2201,18 +2838,43 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyOsAccentToResources()
+    // Persist a domain's dominant color; live-refresh the accent if that domain is active.
+    private void SetDomainColor(AppDomainMode mode, string hex)
     {
-        var c = WindowsAccent.Get();
-        var brush = new SolidColorBrush(c);
-        if (brush.CanFreeze) brush.Freeze();
-        Application.Current.Resources["AccentBrush"] = brush;
+        if (mode == AppDomainMode.Network) App.Settings.NetworkColorHex = hex;
+        else                               App.Settings.HardwareColorHex = hex;
+        SettingsManager.Save(App.Settings);
+        if (DomainManager.Current == mode) DomainManager.Apply(mode);
     }
 
     // ────────── Scenarios ──────────
 
     private void OnScenarioBtnClick(object sender, RoutedEventArgs e)
         => _ = Vm.ToggleScenarioCommand.ExecuteAsync(null);
+
+    private void OnGlobalCapBtnClick(object sender, MouseButtonEventArgs e) => ToggleGlobalCap();
+
+    /// <summary>
+    /// Toggles the global upload cap. If the user is enabling it but no value is
+    /// configured yet (0 = no cap), there's nothing to apply — so instead of flipping
+    /// on a no-op cap, send them to Limits &amp; Scenarios and focus the cap value box.
+    /// </summary>
+    private void ToggleGlobalCap()
+    {
+        // With no cap value configured the toggle has nothing to apply, so it's not
+        // toggleable — instead it opens Limits & Scenarios → Global upload cap to set one.
+        if (Vm.GlobalUploadCapKBs <= 0)
+        {
+            NavigateToLimitsCard(CardGlobalCap);
+            Dispatcher.BeginInvoke(() =>
+            {
+                GlobalCapValueBox.Focus();
+                GlobalCapValueBox.SelectAll();
+            }, System.Windows.Threading.DispatcherPriority.Input);
+            return;
+        }
+        Vm.IsGlobalUploadCapEnabled = !Vm.IsGlobalUploadCapEnabled;
+    }
 
     // ── Scenarios profile editor (Settings tab) ──────────────────────────────
 
@@ -2579,8 +3241,8 @@ public partial class MainWindow : Window
         bool dark = App.Settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
         if (Vm.IsDarkTheme != dark) Vm.IsDarkTheme = dark;
 
-        // Windows accent
-        if (App.Settings.UseWindowsAccent) ApplyOsAccentToResources();
+        // Accent is owned by DomainManager (per-domain dominant color) — re-assert it
+        DomainManager.Apply(DomainManager.Current);
 
         // Colors
         Vm.SetDownColor(App.Settings.DownColorHex);
@@ -2597,6 +3259,8 @@ public partial class MainWindow : Window
         PopulateSwatches(TempHotSwatches,   App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
         PopulateSwatches(PingGoodSwatches,  App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
         PopulateSwatches(PingBadSwatches,   App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
+        PopulateSwatches(NetworkAccentSwatches,  _networkPalette,  App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
+        PopulateSwatches(HardwareAccentSwatches, _hardwarePalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
 
         // Behavior toggles
         InitBehaviourToggles();

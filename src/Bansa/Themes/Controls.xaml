@@ -25,17 +25,22 @@
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource RobotoFamily}" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
-        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
-        <Setter Property="RenderOptions.ClearTypeHint" Value="Enabled" />
+        <!-- Ideal + Grayscale = web-like glyph positioning + antialiasing, matching the
+             mockup's smooth Inter rendering (ClearType read as jagged/fringed here). -->
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
         <Setter Property="UseLayoutRounding" Value="True" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
+    <!-- Default body/title text is white (TextBrush). Controls whose label must follow
+         their own state (nav items) bind the label's Foreground to the ancestor button
+         explicitly — see the sidebar nav labels. String-content controls (DomainSeg /
+         SettingsTab) already follow their control Foreground via the ContentPresenter. -->
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
-        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
     </Style>
 
     <!-- Card — hardware / info tiles.
@@ -44,17 +49,11 @@
          the new darker background.  The top-to-bottom gradient still gives depth
          without heavy drop shadows that hurt ClearType on child text. -->
     <Style TargetType="Border" x:Key="Card">
-        <Setter Property="Background">
-            <Setter.Value>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Color="{DynamicResource PanelAltColor}" Offset="0" />
-                    <GradientStop Color="{DynamicResource PanelColor}"    Offset="1" />
-                </LinearGradientBrush>
-            </Setter.Value>
-        </Setter>
+        <!-- Flat surface/1 grey to match the mockup boxes (was a gradient). -->
+        <Setter Property="Background"      Value="{DynamicResource PanelBrush}" />
         <Setter Property="BorderBrush"     Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius"    Value="16" />
+        <Setter Property="CornerRadius"    Value="12" />
         <Setter Property="Effect">
             <Setter.Value>
                 <DropShadowEffect BlurRadius="10" ShadowDepth="3" Opacity="0.30"
@@ -437,21 +436,31 @@
                         <!-- Active fill (instant, handles initial IsChecked=True correctly) -->
                         <Border x:Name="activeBg"
                                 Background="{DynamicResource AccentMutedBrush}"
-                                CornerRadius="8" Margin="4,1,4,1"
+                                CornerRadius="9" Margin="4,1,4,1"
                                 Visibility="Collapsed" />
-                        <!-- 4 px gradient accent bar on left edge -->
+                        <!-- Slim inset accent bar on the left edge (mockup-style) -->
                         <Border x:Name="indicator"
-                                Width="4" HorizontalAlignment="Left"
-                                CornerRadius="0,4,4,0"
+                                Width="3" HorizontalAlignment="Left"
+                                Margin="0,9,0,9" CornerRadius="3"
                                 Visibility="Collapsed"
-                                Background="{DynamicResource AccentGradientVerticalBrush}" />
+                                Background="{DynamicResource AccentBrush}" />
                         <!-- Content layer — sits on top of all tinted backgrounds -->
                         <Border Background="Transparent"
                                 CornerRadius="8"
                                 Margin="4,1,4,1"
                                 Padding="10,11">
                             <ContentPresenter VerticalAlignment="Center"
-                                              HorizontalAlignment="Left" />
+                                              HorizontalAlignment="Left">
+                                <ContentPresenter.Resources>
+                                    <!-- Label text follows the nav item's Foreground state
+                                         (grey → white on hover → light-accent when selected),
+                                         overriding the global white TextBlock default. -->
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground"
+                                                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -485,8 +494,48 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="activeBg"  Property="Visibility" Value="Visible" />
                             <Setter TargetName="indicator" Property="Visibility" Value="Visible" />
-                            <Setter Property="Foreground"  Value="{DynamicResource AccentBrush}" />
+                            <!-- Selected title/icon = lighter tint of the accent (line stays full accent) -->
+                            <Setter Property="Foreground"  Value="{DynamicResource AccentLightBrush}" />
                             <Setter Property="FontWeight"  Value="SemiBold" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Header domain switch — segmented pill (Network / Hardware) -->
+    <Style TargetType="RadioButton" x:Key="DomainSeg">
+        <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="bg" Background="Transparent" CornerRadius="7" Padding="14,5">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="dot" Width="7" Height="7" Margin="0,0,7,0"
+                                     VerticalAlignment="Center"
+                                     Fill="{TemplateBinding Foreground}" Opacity="0.45" />
+                            <ContentPresenter VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground"
+                                                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource HoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="dot" Property="Opacity" Value="1" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -38,6 +38,9 @@ public partial class App : Application
         var theme = Enum.TryParse<AppTheme>(Settings.Theme, true, out var t) ? t : AppTheme.Dark;
         ThemeManager.Apply(theme);
 
+        var domain = Enum.TryParse<AppDomainMode>(Settings.Domain, true, out var dm) ? dm : AppDomainMode.Network;
+        DomainManager.Apply(domain);
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
 

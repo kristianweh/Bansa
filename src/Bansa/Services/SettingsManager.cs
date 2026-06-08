@@ -25,6 +25,9 @@ public class LimitProfile
 public class BansaSettings
 {
     public string Theme { get; set; } = "Dark";          // "Dark" or "Light"
+    public string Domain { get; set; } = "Network";      // "Network" or "Hardware" — header domain mode
+    public string NetworkColorHex  { get; set; } = "#00C8F0";  // Network domain dominant accent (dark-tuned base)
+    public string HardwareColorHex { get; set; } = "#FF8A3D";  // Hardware domain dominant accent (thermal base)
     public double HideBelowKBps { get; set; } = 0;
     public bool HideLocalOnlyApps { get; set; } = false;  // hide apps whose all connections are loopback/LAN
     public bool MinimizeOnClose      { get; set; } = false;
@@ -119,7 +122,8 @@ public class BansaSettings
 
     // ── Floating graph window ─────────────────────────────────────────────────
     public bool   ShowFloatingGraph  { get; set; } = false;
-    public bool   ShowHardwarePanel  { get; set; } = true;    // SYS panel in float graph
+    public bool   ShowHardwarePanel  { get; set; } = true;    // SYS panel in float graph (legacy)
+    public string FloatViewMode      { get; set; } = "Net";   // float graph tab: "Net" | "Temp" | "Both"
     public double FloatGraphX        { get; set; } = -1;      // -1 = auto-position
     public double FloatGraphY        { get; set; } = -1;
     public double FloatGraphW        { get; set; } = 340;

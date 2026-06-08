@@ -21,90 +21,32 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- Pill toggle — Carbon palette, gradient checked state -->
-        <Style x:Key="PillTab" TargetType="ToggleButton">
-            <Setter Property="Background"      Value="{DynamicResource PanelAltBrush}" />
-            <Setter Property="Foreground"      Value="{DynamicResource SubtleTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding"         Value="12,5" />
-            <Setter Property="Cursor"          Value="Hand" />
-            <Setter Property="FontFamily"      Value="{StaticResource RobotoFamily}" />
-            <Setter Property="FontSize"        Value="10" />
-            <Setter Property="FontWeight"      Value="SemiBold" />
+        <!-- Mode tab — header-switch look, no dot; active state = accent tint + accent text -->
+        <Style x:Key="FloatSegTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                Padding="{TemplateBinding Padding}" CornerRadius="999">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="7" Padding="11,5" MinWidth="32">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground"
+                                                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource HoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentGradientBrush}" />
-                                <Setter Property="Foreground" Value="White" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Minimal icon button -->
-        <Style x:Key="MiniBtn" TargetType="Button">
-            <Setter Property="Background"      Value="Transparent" />
-            <Setter Property="Foreground"      Value="{DynamicResource SubtleTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding"         Value="0" />
-            <Setter Property="Cursor"          Value="Hand" />
-            <Setter Property="FontFamily"      Value="Segoe MDL2 Assets" />
-            <Setter Property="FontSize"        Value="11" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                Width="{TemplateBinding Width}" Height="{TemplateBinding Height}"
-                                CornerRadius="6">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="MiniToggleBtn" TargetType="ToggleButton">
-            <Setter Property="Background"      Value="Transparent" />
-            <Setter Property="Foreground"      Value="{DynamicResource MutedTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding"         Value="0" />
-            <Setter Property="Cursor"          Value="Hand" />
-            <Setter Property="FontFamily"      Value="Segoe MDL2 Assets" />
-            <Setter Property="FontSize"        Value="11" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                Width="{TemplateBinding Width}" Height="{TemplateBinding Height}"
-                                CornerRadius="6">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentGradientBrush}" />
-                                <Setter Property="Foreground" Value="White" />
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -135,9 +77,9 @@
         </Style>
     </Window.Resources>
 
-    <Grid x:Name="ContentGrid" Background="{DynamicResource BgBrush}"
-          ContextMenuOpening="OnWindowContextMenuOpening">
-        <Grid.ContextMenu>
+    <DockPanel x:Name="RootDock" Background="{DynamicResource BgBrush}"
+               ContextMenuOpening="OnWindowContextMenuOpening">
+        <DockPanel.ContextMenu>
             <ContextMenu>
                 <MenuItem Header="Open Bansa" Click="OnOpenBansaMenuClick" />
                 <Separator />
@@ -145,13 +87,30 @@
                           IsCheckable="True" IsChecked="True"
                           Click="OnAlwaysOnTopMenuClick" />
                 <Separator />
-                <MenuItem x:Name="ShowSystemMenu" Header="Show system info"
-                          IsCheckable="True" IsChecked="True"
-                          Click="OnShowSystemMenuClick" />
-                <Separator />
                 <MenuItem Header="Close" Click="OnCloseClick" />
             </ContextMenu>
-        </Grid.ContextMenu>
+        </DockPanel.ContextMenu>
+
+        <!-- Mode switch at the BOTTOM, centered (close via right-click → Close). The bar's
+             empty area drags the window; the buttons sit below the chrome so they click fine. -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource BgBrush}" Padding="6,5,6,6"
+                MouseLeftButtonDown="OnRatesBarDrag" Cursor="SizeAll">
+            <Border HorizontalAlignment="Center"
+                    Background="{DynamicResource PanelAltBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="9" Padding="3">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="TabNet"  Style="{StaticResource FloatSegTab}" GroupName="FloatMode"
+                                 Content="Net"  Tag="Net"  Checked="OnFloatModeChecked" />
+                    <RadioButton x:Name="TabTemp" Style="{StaticResource FloatSegTab}" GroupName="FloatMode"
+                                 Content="Temp" Tag="Temp" Checked="OnFloatModeChecked" />
+                    <RadioButton x:Name="TabBoth" Style="{StaticResource FloatSegTab}" GroupName="FloatMode"
+                                 Content="Both" Tag="Both" Checked="OnFloatModeChecked" />
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <Grid x:Name="ContentGrid">
         <Grid.RowDefinitions>
             <RowDefinition x:Name="GraphRow" Height="3*" MinHeight="80" />
             <RowDefinition x:Name="S1Row"    Height="8" />
@@ -204,8 +163,9 @@
 
                     <!-- Download: arrow + large number + small unit -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="↓ " FontSize="15" FontWeight="Bold"
+                        <TextBlock Text="▼ " FontSize="11" FontWeight="Bold"
                                    FontFamily="{StaticResource RobotoMonoFamily}"
+                                   VerticalAlignment="Center"
                                    Foreground="{DynamicResource ChartDownBrush}" />
                         <TextBlock x:Name="DownRateValue" Text="—" FontSize="15" FontWeight="Bold"
                                    FontFamily="{StaticResource RobotoMonoFamily}"
@@ -234,8 +194,9 @@
                                    VerticalAlignment="Bottom" Margin="2,0,0,3">
                             <TextBlock.LayoutTransform><ScaleTransform ScaleX="0.90"/></TextBlock.LayoutTransform>
                         </TextBlock>
-                        <TextBlock Text=" ↑" FontSize="15" FontWeight="Bold"
+                        <TextBlock Text=" ▲" FontSize="11" FontWeight="Bold"
                                    FontFamily="{StaticResource RobotoMonoFamily}"
+                                   VerticalAlignment="Center"
                                    Foreground="{DynamicResource ChartUpBrush}" />
                     </StackPanel>
                 </Grid>
@@ -355,121 +316,81 @@
 
         <GridSplitter Grid.Row="3" x:Name="Splitter2" Style="{StaticResource SectionGrip}" />
 
-        <!-- ═══ HARDWARE SECTION ═══ -->
+        <!-- ═══ HARDWARE SECTION (Temp) — gauges + temp graphs, RAM unchanged ═══ -->
         <Border Grid.Row="4" x:Name="HwSection"
                 Background="{DynamicResource BgBrush}" Visibility="Collapsed">
-            <Grid Margin="8,6,8,6">
+            <Grid Margin="8,4,8,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition x:Name="FloatTempGraphRow" Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="SYSTEM" FontSize="10" FontWeight="SemiBold"
-                           Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,6" />
-
-                <Grid Grid.Row="1" Margin="0,0,0,5">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="5" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- CPU box -->
-                    <Border Grid.Column="0" Background="{DynamicResource PanelAltBrush}"
-                            CornerRadius="10" Padding="10,8" MinHeight="80">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="CPU" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,2" />
-                            <StackPanel Grid.Row="1" Orientation="Horizontal"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        Margin="0,2,0,2">
-                                <TextBlock x:Name="CpuTempFloat" Text="—"
-                                           FontSize="28" FontWeight="Bold"
-                                           FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartCpuBrush}"
-                                           Padding="0,4" />
-                                <TextBlock x:Name="CpuTempDegree" Text="°" FontSize="14" FontWeight="Bold"
-                                           FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartCpuBrush}"
-                                           VerticalAlignment="Bottom" Margin="2,0,0,6" />
-                            </StackPanel>
-                            <Border Grid.Row="2" x:Name="CpuBarBg"
-                                    Background="{DynamicResource BgBrush}"
-                                    CornerRadius="2" Height="3" Margin="0,0,0,4">
-                                <Border x:Name="CpuBarFill" CornerRadius="2"
-                                        HorizontalAlignment="Left" Height="3" Width="0"
-                                        Background="{DynamicResource ChartCpuBrush}" />
-                            </Border>
-                            <TextBlock Grid.Row="3" x:Name="CpuStatsText" FontSize="10"
-                                       Foreground="{DynamicResource SubtleTextBrush}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </Grid>
-                    </Border>
-
-                    <!-- GPU box -->
-                    <Border Grid.Column="2" x:Name="GpuRow"
-                            Background="{DynamicResource PanelAltBrush}"
-                            CornerRadius="10" Padding="10,8" MinHeight="80">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="GPU" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,2" />
-                            <StackPanel Grid.Row="1" Orientation="Horizontal"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        Margin="0,2,0,2">
-                                <TextBlock x:Name="GpuTempFloat" Text="—"
-                                           FontSize="28" FontWeight="Bold"
-                                           FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartGpuBrush}"
-                                           Padding="0,4" />
-                                <TextBlock x:Name="GpuTempDegree" Text="°" FontSize="14" FontWeight="Bold"
-                                           FontFamily="{StaticResource RobotoMonoFamily}"
-                                           Foreground="{DynamicResource ChartGpuBrush}"
-                                           VerticalAlignment="Bottom" Margin="2,0,0,6" />
-                            </StackPanel>
-                            <Border Grid.Row="2" x:Name="GpuBarBg"
-                                    Background="{DynamicResource BgBrush}"
-                                    CornerRadius="2" Height="3" Margin="0,0,0,4">
-                                <Border x:Name="GpuBarFill" CornerRadius="2"
-                                        HorizontalAlignment="Left" Height="3" Width="0"
-                                        Background="{DynamicResource ChartGpuBrush}" />
-                            </Border>
-                            <TextBlock Grid.Row="3" x:Name="GpuStatsText" FontSize="10"
-                                       Foreground="{DynamicResource SubtleTextBrush}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <Grid Grid.Row="4" x:Name="VramRow" Margin="0,4,0,0" Visibility="Collapsed">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="VramBarBg" Background="{DynamicResource BgBrush}"
-                                        CornerRadius="2" Height="3" VerticalAlignment="Center">
-                                    <Border x:Name="VramBarFill" CornerRadius="2"
-                                            HorizontalAlignment="Left" Height="3" Width="0"
-                                            Background="#CC8833" />
-                                </Border>
-                                <TextBlock x:Name="VramStatsText" Grid.Column="1"
-                                           FontSize="9" Foreground="{DynamicResource SubtleTextBrush}"
-                                           Margin="5,0,0,0" VerticalAlignment="Center" />
+                <!-- CPU + GPU radial gauges (donut, like the Hardware tab) -->
+                <Border Grid.Row="0" Background="{DynamicResource PanelAltBrush}"
+                        CornerRadius="10" Padding="8,8" Margin="0,0,0,5">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <Grid Height="84">
+                                <Canvas x:Name="CpuGaugeFloat" SizeChanged="OnFloatGaugeSizeChanged" />
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock x:Name="CpuTempFloat" Text="—" FontSize="19" FontWeight="Bold"
+                                               FontFamily="{StaticResource RobotoMonoFamily}"
+                                               Foreground="{DynamicResource ChartCpuBrush}" HorizontalAlignment="Center" />
+                                    <TextBlock x:Name="CpuLoadFloat" Text="load —%" FontSize="9"
+                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                                </StackPanel>
                             </Grid>
-                        </Grid>
-                    </Border>
-                </Grid>
+                            <TextBlock Text="CPU" FontSize="9" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource SubtleTextBrush}" Margin="0,1,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <Grid Height="84">
+                                <Canvas x:Name="GpuGaugeFloat" SizeChanged="OnFloatGaugeSizeChanged" />
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock x:Name="GpuTempFloat" Text="—" FontSize="19" FontWeight="Bold"
+                                               FontFamily="{StaticResource RobotoMonoFamily}"
+                                               Foreground="{DynamicResource ChartGpuBrush}" HorizontalAlignment="Center" />
+                                    <TextBlock x:Name="GpuLoadFloat" Text="load —%" FontSize="9"
+                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="GPU" FontSize="9" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource SubtleTextBrush}" Margin="0,1,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-                <!-- RAM strip -->
+                <!-- CPU + GPU temperature graphs (overlaid, shared time axis) — Temp tab only -->
+                <Border Grid.Row="1" x:Name="FloatTempGraphBox" Background="{DynamicResource PanelAltBrush}"
+                        CornerRadius="10" Padding="8,6" Margin="0,0,0,5" MinHeight="74">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,2">
+                            <TextBlock Text="TEMPERATURE" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Border Width="10" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                        Background="{DynamicResource ChartCpuBrush}" Margin="0,0,4,0" />
+                                <TextBlock Text="CPU" FontSize="9" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,8,0" />
+                                <Border Width="10" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                        Background="{DynamicResource ChartGpuBrush}" Margin="0,0,4,0" />
+                                <TextBlock Text="GPU" FontSize="9" Foreground="{DynamicResource SubtleTextBrush}" />
+                            </StackPanel>
+                        </Grid>
+                        <Canvas Grid.Row="1" x:Name="FloatTempChart" MinHeight="48"
+                                SizeChanged="OnFloatGaugeSizeChanged" />
+                    </Grid>
+                </Border>
+
+                <!-- RAM strip (unchanged) -->
                 <Border Grid.Row="2" Background="{DynamicResource PanelAltBrush}"
                         CornerRadius="10" Padding="10,8">
                     <Grid>
@@ -493,5 +414,6 @@
                 </Border>
             </Grid>
         </Border>
-    </Grid>
+        </Grid>
+    </DockPanel>
 </Window>

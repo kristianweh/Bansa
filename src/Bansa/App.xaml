@@ -6,7 +6,8 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Default theme dict loaded first; ThemeManager swaps Dark.xaml/Light.xaml at index 0 at startup -->
+                <!-- Default theme dict loaded first; ThemeManager swaps Dark.xaml/Light.xaml at index 0 at startup.
+                     Per-domain accent is layered on top in code by DomainManager (root-dict overrides). -->
                 <ResourceDictionary Source="Themes/Dark.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>

@@ -25,36 +25,67 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="40" />     <!-- custom title bar -->
             <RowDefinition Height="*" />      <!-- content (sidebar + view) -->
-            <RowDefinition Height="Auto" />   <!-- status bar -->
         </Grid.RowDefinitions>
 
         <!-- ═════════════════ Custom title bar ═════════════════ -->
-        <Grid Grid.Row="0" Background="{DynamicResource BgBrush}">
+        <Grid Grid.Row="0" Background="{DynamicResource PanelBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="240" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Brand -->
+            <!-- Brand — confined to the 240px sidebar column so the switch lines up with it -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
                 <Image x:Name="BrandLogo" Height="28" Width="28"
                        RenderOptions.BitmapScalingMode="HighQuality" />
-                <TextBlock Text="BANSA" Margin="10,0,0,0"
-                           FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13"
-                           Foreground="{DynamicResource TextBrush}"
-                           VerticalAlignment="Center" />
+                <!-- "BANSA" as discrete TextBlocks so the two A's reliably re-skin with the domain accent.
+                     Mono font → equal advance widths, so adjacent blocks read as one solid word. -->
+                <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="B" FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="A" FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AccentBrush}" />
+                    <TextBlock Text="N" FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="S" FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="A" FontFamily="{StaticResource RobotoMonoFamily}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AccentBrush}" />
+                </StackPanel>
                 <TextBlock Text="{Binding AppVersionShort, StringFormat='  monitoring ({0})'}"
                            Foreground="{DynamicResource SubtleTextBrush}"
                            FontSize="12" VerticalAlignment="Center" />
             </StackPanel>
 
-            <!-- Drag area — explicit DragMove so moving always works -->
-            <Border Grid.Column="1" Background="Transparent"
-                    MouseLeftButtonDown="OnTitleBarDrag" />
+            <!-- Drag area + domain switch (switch left edge sits at the sidebar/content boundary) -->
+            <Grid Grid.Column="1">
+                <Border Background="Transparent" MouseLeftButtonDown="OnTitleBarDrag" />
+                <Border HorizontalAlignment="Left" VerticalAlignment="Center"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Background="{DynamicResource BgBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="9" Padding="3">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="DomainNetworkBtn" Style="{StaticResource DomainSeg}"
+                                     GroupName="Domain" Tag="Network" IsChecked="True"
+                                     Content="Network" Click="OnDomainClick" />
+                        <RadioButton x:Name="DomainHardwareBtn" Style="{StaticResource DomainSeg}"
+                                     GroupName="Domain" Tag="Hardware"
+                                     Content="Hardware" Click="OnDomainClick" />
+                    </StackPanel>
+                </Border>
+            </Grid>
 
             <!-- Caption buttons -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource CaptionButton}" ToolTip="Settings"
+                        Click="OnSettingsGearClick">
+                    <Viewbox Width="18" Height="18">
+                        <Canvas Width="24" Height="24">
+                            <Path Stroke="{DynamicResource TextBrush}" StrokeThickness="1.5"
+                                  StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                            <Path Stroke="{DynamicResource TextBrush}" StrokeThickness="1.5"
+                                  StrokeLineJoin="Round" Data="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
                 <Button Style="{StaticResource CaptionButton}"
                         Content="&#xE921;"   ToolTip="Minimize"
                         Click="OnMinimize" />
@@ -93,48 +124,90 @@
                         <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavDashboard"
                                      IsChecked="True" Click="OnNavClick" Tag="0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE80F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="Dashboard" VerticalAlignment="Center" />
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round"
+                                              Data="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Dashboard" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
                             </StackPanel>
                         </RadioButton>
-                        <!-- Network (processes) -->
+                        <!-- Live Traffic (processes) -->
                         <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavProcesses"
                                      Click="OnNavClick" Tag="1" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xF785;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="Network" VerticalAlignment="Center" />
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M22 12h-4l-3 9L9 3l-3 9H2" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Live Traffic" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
+                            </StackPanel>
+                        </RadioButton>
+                        <!-- Limits & Scenarios (Network mode) -->
+                        <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavLimits"
+                                     Click="OnNavClick" Tag="6" Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Limits &amp; Scenarios" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
                             </StackPanel>
                         </RadioButton>
                         <!-- Hardware -->
                         <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavHardware"
                                      Click="OnNavClick" Tag="2" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE950;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="Hardware" VerticalAlignment="Center" />
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M5 5h14v14H5z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Hardware" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
                             </StackPanel>
                         </RadioButton>
                         <!-- Tools -->
                         <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavTools"
                                      Click="OnNavClick" Tag="3" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE90F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="Tools" VerticalAlignment="Center" />
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6.6 6.6a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l6.6-6.6a4 4 0 0 0 5.4-5.4l-2.8 2.8-2.1-2.1 2.9-2.7z" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Tools" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
                             </StackPanel>
                         </RadioButton>
-                        <!-- History -->
+                        <!-- History (domain-aware: Network history vs Hardware history) -->
                         <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavHistory"
                                      Click="OnNavClick" Tag="4" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="History" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <!-- Settings -->
-                        <RadioButton Style="{StaticResource NavItem}" GroupName="Nav" x:Name="NavSettings"
-                                     Click="OnNavClick" Tag="5" Margin="0,4,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,12,0" FontSize="16" />
-                                <TextBlock Text="Settings" VerticalAlignment="Center" />
+                                <Viewbox Width="17" Height="17" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6l4 2" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="History" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type RadioButton}}}" />
                             </StackPanel>
                         </RadioButton>
                     </StackPanel>
@@ -144,8 +217,49 @@
                         <!-- Hairline separator above bottom widget cluster -->
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,0" Opacity="0.6" />
                         <TextBlock Style="{StaticResource NavSectionLabel}" Text="STATUS" Margin="14,8,14,6" />
+
+                        <!-- CPU / GPU temps (donut gauges, like the float window) -->
+                        <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="8" Padding="8,8" Margin="0,0,0,5"
+                                Cursor="Hand" MouseLeftButtonDown="OnSidebarHwClick"
+                                Focusable="True" Tag="nav:hardware" KeyDown="OnCardKeyDown"
+                                AutomationProperties.Name="CPU / GPU temperatures — open Hardware dashboard"
+                                ToolTip="Open Hardware dashboard">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <Grid Height="62">
+                                        <Canvas x:Name="SbCpuGauge" SizeChanged="OnSidebarGaugeSizeChanged" />
+                                        <TextBlock x:Name="SbCpuTemp" Text="—" FontSize="15" FontWeight="Bold"
+                                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                                   Foreground="{DynamicResource ChartCpuBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Text="CPU" FontSize="9" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource SubtleTextBrush}" Margin="0,1,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <Grid Height="62">
+                                        <Canvas x:Name="SbGpuGauge" SizeChanged="OnSidebarGaugeSizeChanged" />
+                                        <TextBlock x:Name="SbGpuTemp" Text="—" FontSize="15" FontWeight="Bold"
+                                                   FontFamily="{StaticResource RobotoMonoFamily}"
+                                                   Foreground="{DynamicResource ChartGpuBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Text="GPU" FontSize="9" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource SubtleTextBrush}" Margin="0,1,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                         <!-- No ClipToBounds — Roboto Mono's ascenders clip against rounded corners with it on -->
-                        <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="8" Margin="0,0,0,5">
+                        <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="8" Margin="0,0,0,5"
+                                Cursor="Hand" MouseLeftButtonDown="OnSidebarBandwidthClick"
+                                Focusable="True" Tag="nav:dashboard" KeyDown="OnCardKeyDown"
+                                AutomationProperties.Name="Download / Upload totals — open Network dashboard"
+                                ToolTip="Open Network dashboard">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -189,8 +303,8 @@
                         <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,10"
                                 Cursor="Hand" MouseLeftButtonDown="OnSidebarPingClick"
                                 Focusable="True" Tag="ping" KeyDown="OnCardKeyDown"
-                                AutomationProperties.Name="Ping — manage ping targets"
-                                ToolTip="Click to manage ping targets">
+                                AutomationProperties.Name="Ping — open Ping Monitor"
+                                ToolTip="Open Ping Monitor in Limits &amp; Scenarios">
                             <StackPanel>
                                 <TextBlock Text="{Binding PingDisplayLabel}" FontSize="9" FontWeight="SemiBold"
                                            Foreground="{DynamicResource MutedTextBrush}"
@@ -207,74 +321,102 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Scenarios toggle — styled as a card, not a raw button -->
-                        <Border x:Name="ScenarioCard" CornerRadius="8" Padding="12,9"
-                                Cursor="Hand" MouseLeftButtonDown="OnScenarioBtnClick"
-                                Focusable="True" Tag="scenario" KeyDown="OnCardKeyDown"
-                                AutomationProperties.Name="Toggle Scenarios"
-                                ToolTip="Toggle Scenarios — applies per-app limits defined in Settings → Scenarios">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <!-- ON / OFF pill -->
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="15" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                    <Setter Property="Foreground" Value="White" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock FontSize="9" FontWeight="SemiBold">
+                        <!-- Scenarios + Global Cap toggles (split) -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border x:Name="ScenarioCard" Grid.Column="0" CornerRadius="8" Padding="8,9"
+                                    Cursor="Hand" MouseLeftButtonDown="OnScenarioBtnClick"
+                                    Focusable="True" Tag="scenario" KeyDown="OnCardKeyDown"
+                                    AutomationProperties.Name="Toggle Scenarios"
+                                    ToolTip="Toggle Scenarios — applies per-app limits">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                               FontSize="15" HorizontalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
-                                                <Setter Property="Text"       Value="SCENARIOS" />
                                                 <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                        <Setter Property="Foreground" Value="#BBE0F8" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentLightBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
-                                    <TextBlock FontSize="11" FontWeight="SemiBold" Margin="0,1,0,0">
+                                    <TextBlock Text="Scenarios" FontSize="10" FontWeight="SemiBold" Margin="0,4,0,0" HorizontalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
-                                                <Setter Property="Text"       Value="Off" />
                                                 <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                        <Setter Property="Text"       Value="Active" />
-                                                        <Setter Property="Foreground" Value="White" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentLightBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                            </Grid>
-                        </Border>
+                            </Border>
+
+                            <Border x:Name="GlobalCapCard" Grid.Column="2" CornerRadius="8" Padding="8,9"
+                                    Cursor="Hand" MouseLeftButtonDown="OnGlobalCapBtnClick"
+                                    Focusable="True" Tag="globalcap" KeyDown="OnCardKeyDown"
+                                    AutomationProperties.Name="Toggle Global Upload Cap"
+                                    ToolTip="Toggle Global Upload Cap — set the value in Limits &amp; Scenarios">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGlobalUploadCapEnabled}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="&#xE898;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                               FontSize="15" HorizontalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsGlobalUploadCapEnabled}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentLightBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="Global Cap" FontSize="10" FontWeight="SemiBold" Margin="0,4,0,0" HorizontalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsGlobalUploadCapEnabled}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentLightBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -306,18 +448,21 @@
                         <Button HorizontalAlignment="Right" VerticalAlignment="Center"
                                 Padding="12,7" Click="OnFloatGraphToggle">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <Viewbox Width="15" Height="15" Margin="0,0,6,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{DynamicResource TextBrush}" StrokeThickness="2"
+                                              StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6 M15 13h6v6h-6z" />
+                                    </Canvas>
+                                </Viewbox>
                                 <TextBlock Text="Float Graph" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </Grid>
 
-                    <!-- Hero: Download + Upload + Ping + Scenarios -->
+                    <!-- Hero: Download + Upload + Ping -->
                     <Grid Grid.Row="1" Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="150" />
-                            <ColumnDefinition Width="14" />
                             <ColumnDefinition Width="*" MinWidth="150" />
                             <ColumnDefinition Width="14" />
                             <ColumnDefinition Width="*" MinWidth="150" />
@@ -327,7 +472,6 @@
 
                         <!-- Download card — cyan ambient tint, hover-lift animation -->
                         <Border Grid.Column="0" Style="{StaticResource HoverLiftCard}" Padding="18,18"
-                                Background="{DynamicResource HeroDownCardBrush}"
                                 Cursor="Hand" MouseLeftButtonDown="OnDashBandwidthClick"
                                 Focusable="True" Tag="nav:network" KeyDown="OnCardKeyDown"
                                 AutomationProperties.Name="Download — open Network tab"
@@ -357,7 +501,6 @@
 
                         <!-- Upload card — amber ambient tint, hover-lift animation -->
                         <Border Grid.Column="2" Style="{StaticResource HoverLiftCard}" Padding="18,18"
-                                Background="{DynamicResource HeroUpCardBrush}"
                                 Cursor="Hand" MouseLeftButtonDown="OnDashBandwidthClick"
                                 Focusable="True" Tag="nav:network" KeyDown="OnCardKeyDown"
                                 AutomationProperties.Name="Upload — open Network tab"
@@ -414,209 +557,74 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Scenarios card -->
-                        <Border Grid.Column="6" Padding="18,18">
-                            <Border.Style>
-                                <Style TargetType="Border" BasedOn="{StaticResource Card}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <StackPanel>
-                                <TextBlock FontSize="10" FontWeight="SemiBold" Margin="0,0,0,4">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text"       Value="SCENARIOS" />
-                                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                    <Setter Property="Foreground" Value="#BBE0F8" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock FontSize="28" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                           TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="Off" />
-                                            <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                    <Setter Property="Text" Value="Active" />
-                                                    <Setter Property="Foreground" Value="White" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <Button Margin="0,8,0,0" Padding="10,5" HorizontalAlignment="Left"
-                                        Command="{Binding ToggleScenarioCommand}"
-                                        Click="OnScenarioBtnClick">
-                                    <TextBlock>
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="Enable" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsScenarioActive}" Value="True">
-                                                        <Setter Property="Text" Value="Disable" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Button>
-                            </StackPanel>
-                        </Border>
                     </Grid>
 
-                    <!-- System Health: 3 separate chip cards (CPU / GPU / RAM) -->
-                    <Grid Grid.Row="2" Margin="0,0,0,16">
+                    <!-- Throughput timeline — download above the axis, upload mirrored below (UniFi-style) -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,16">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock Text="THROUGHPUT" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Border Width="10" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                            Background="{DynamicResource ChartDownBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="Down" FontSize="10" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,12,0" />
+                                    <Border Width="10" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                            Background="{DynamicResource ChartUpBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="Up" FontSize="10" Foreground="{DynamicResource SubtleTextBrush}" />
+                                </StackPanel>
+                            </Grid>
+                            <Canvas Grid.Row="1" x:Name="DashThroughputChart" Height="120" MinHeight="100"
+                                    ClipToBounds="True" SizeChanged="OnDashThroughputSizeChanged" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Bandwidth share donut + active processes — columns mirror the hero row
+                         so the donut box lines up under DOWNLOAD and the process list starts under UPLOAD -->
+                    <Grid Grid.Row="3">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" MinWidth="150" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" MinWidth="150" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" MinWidth="150" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- CPU chip -->
-                        <Border Grid.Column="0" Style="{StaticResource HoverLiftCard}" Padding="20,14"
-                                Cursor="Hand" MouseLeftButtonDown="OnDashHardwareClick"
-                                Focusable="True" Tag="nav:hardware" KeyDown="OnCardKeyDown"
-                                AutomationProperties.Name="CPU — open Hardware tab"
-                                ToolTip="Click to open Hardware tab"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+                        <!-- Bandwidth share (per-app share of current download, total in the hole) -->
+                        <Border Grid.Column="0" Style="{StaticResource Card}" Padding="18,16" VerticalAlignment="Top">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
-                                <Grid Grid.Row="0" Margin="0,0,0,8">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE950;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource ChartCpuBrush}"
-                                                   VerticalAlignment="Center" Margin="0,0,7,0" />
-                                        <TextBlock x:Name="DashCpuName" Text="CPU" FontSize="12" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" />
-                                    </StackPanel>
-                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <TextBlock x:Name="DashCpuPct" Text="—"
-                                                   FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Padding="0,3"
-                                                   Foreground="{DynamicResource ChartCpuBrush}" />
-                                        <TextBlock x:Name="DashCpuTempSign" Text="°C" FontSize="10" FontWeight="SemiBold"
-                                                   FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartCpuBrush}"
-                                                   VerticalAlignment="Bottom" Margin="2,0,0,6" />
-                                    </StackPanel>
-                                </Grid>
-                                <ProgressBar x:Name="DashCpuBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource ChartCpuBrush}" Margin="0,0,0,8" />
-                                <Grid Grid.Row="2">
-                                    <TextBlock x:Name="DashCpuTemp" Text="" FontSize="11"
-                                               Foreground="{DynamicResource SubtleTextBrush}" />
-                                    <TextBlock x:Name="DashCpuFreq" Text="" FontSize="11"
-                                               HorizontalAlignment="Right"
-                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                <TextBlock Grid.Row="0" Text="BANDWIDTH SHARE" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,12" />
+                                <Grid Grid.Row="1" VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Grid.Column="0" Width="128" Height="128">
+                                        <Canvas x:Name="BandwidthDonut" SizeChanged="OnBandwidthDonutSizeChanged" />
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <TextBlock x:Name="DonutTotalVal" Text="—" FontSize="19" FontWeight="Bold"
+                                                       FontFamily="{StaticResource RobotoMonoFamily}" HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                            <TextBlock x:Name="DonutTotalUnit" Text="total" FontSize="9"
+                                                       Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,1,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel x:Name="DonutLegend" Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" />
                                 </Grid>
                             </Grid>
                         </Border>
 
-                        <!-- GPU chip -->
-                        <Border Grid.Column="2" Style="{StaticResource HoverLiftCard}" Padding="20,14"
-                                Cursor="Hand" MouseLeftButtonDown="OnDashHardwareClick"
-                                Focusable="True" Tag="nav:hardware" KeyDown="OnCardKeyDown"
-                                AutomationProperties.Name="GPU — open Hardware tab"
-                                ToolTip="Click to open Hardware tab"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid Grid.Row="0" Margin="0,0,0,8">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE7F4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource ChartGpuBrush}"
-                                                   VerticalAlignment="Center" Margin="0,0,7,0" />
-                                        <TextBlock x:Name="DashGpuName" Text="GPU" FontSize="12" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" />
-                                    </StackPanel>
-                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <TextBlock x:Name="DashGpuPct" Text="—"
-                                                   FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartGpuBrush}" />
-                                        <TextBlock x:Name="DashGpuTempSign" Text="°C" FontSize="10" FontWeight="SemiBold"
-                                                   FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartGpuBrush}"
-                                                   VerticalAlignment="Bottom" Margin="2,0,0,4" />
-                                    </StackPanel>
-                                </Grid>
-                                <ProgressBar x:Name="DashGpuBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource ChartGpuBrush}" Margin="0,0,0,8" />
-                                <Grid Grid.Row="2">
-                                    <TextBlock x:Name="DashGpuTemp" Text="" FontSize="11"
-                                               Foreground="{DynamicResource SubtleTextBrush}" />
-                                    <TextBlock x:Name="DashGpuClock" Text="" FontSize="11"
-                                               HorizontalAlignment="Right"
-                                               Foreground="{DynamicResource MutedTextBrush}" />
-                                </Grid>
-                            </Grid>
-                        </Border>
-
-                        <!-- RAM chip -->
-                        <Border Grid.Column="4" Style="{StaticResource Card}" Padding="20,14"
-                                Cursor="Hand" MouseLeftButtonDown="OnDashHardwareClick"
-                                Focusable="True" Tag="nav:hardware" KeyDown="OnCardKeyDown"
-                                AutomationProperties.Name="RAM — open Hardware tab"
-                                ToolTip="Click to open Hardware tab">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid Grid.Row="0" Margin="0,0,0,8">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE179;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="13" Foreground="{DynamicResource ChartRamBrush}"
-                                                   VerticalAlignment="Center" Margin="0,0,7,0" />
-                                        <TextBlock Text="RAM" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <TextBlock x:Name="DashRamPct" Text="—"
-                                                   FontSize="22" FontWeight="Bold" FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartRamBrush}" />
-                                        <TextBlock Text="%" FontSize="10" FontWeight="SemiBold"
-                                                   FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource ChartRamBrush}"
-                                                   VerticalAlignment="Bottom" Margin="2,0,0,4" />
-                                    </StackPanel>
-                                </Grid>
-                                <ProgressBar x:Name="DashRamBar" Grid.Row="1" Style="{StaticResource CardProgress}"
-                                             Foreground="{DynamicResource ChartRamBrush}" Margin="0,0,0,8" />
-                                <Grid Grid.Row="2">
-                                    <TextBlock x:Name="DashRamUsed" Text="" FontSize="11"
-                                               Foreground="{DynamicResource SubtleTextBrush}" />
-                                    <TextBlock x:Name="DashRamTotal" Text="" FontSize="11"
-                                               HorizontalAlignment="Right"
-                                               Foreground="{DynamicResource MutedTextBrush}" />
-                                </Grid>
-                            </Grid>
-                        </Border>
-                    </Grid>
-
-                    <!-- Active processes card -->
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0" ClipToBounds="True">
+                        <!-- Active processes card — starts under UPLOAD, spans through PING -->
+                        <Border Grid.Column="2" Grid.ColumnSpan="3" Style="{StaticResource Card}" Padding="0" ClipToBounds="True">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -813,7 +821,8 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
-                    </Border>
+                        </Border>
+                    </Grid>
                 </Grid>
 
                 <!-- ══════════ NETWORK (processes) ══════════ -->
@@ -857,8 +866,13 @@
                                 Padding="10,5" Click="OnFloatGraphToggle"
                                 ToolTip="Show / hide floating bandwidth graph on any monitor">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <Viewbox Width="15" Height="15" Margin="0,0,6,0" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{DynamicResource TextBrush}" StrokeThickness="2"
+                                              StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6 M15 13h6v6h-6z" />
+                                    </Canvas>
+                                </Viewbox>
                                 <TextBlock Text="Float Graph" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
@@ -1261,6 +1275,7 @@
 
                 <!-- HISTORY -->
                 <views:HistoryView x:Name="HistoryPanel" Visibility="Collapsed" />
+                <views:HardwareHistoryView x:Name="HardwareHistoryPanel" Visibility="Collapsed" />
 
                 <!-- TOOLS -->
                 <views:ToolsView x:Name="ToolsPanel" Visibility="Collapsed" />
@@ -1284,10 +1299,6 @@
                             <RadioButton x:Name="SettingsTabBtnNetwork"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
                                          Tag="network" Content="Network"
-                                         Click="OnSettingsTabClick" />
-                            <RadioButton x:Name="SettingsTabBtnScenario"
-                                         Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
-                                         Tag="scenarios" Content="Scenarios"
                                          Click="OnSettingsTabClick" />
                             <RadioButton x:Name="SettingsTabBtnAppearance"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
@@ -1456,7 +1467,7 @@
                         <StackPanel x:Name="SettingsTabNetwork" Visibility="Collapsed">
 
                             <!-- Limit Profiles -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <Border x:Name="CardLimitProfiles" Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Limit Profiles" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,16"
@@ -1518,7 +1529,7 @@
                             </Border>
 
                             <!-- Global Upload Cap -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <Border x:Name="CardGlobalCap" Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,6">
                                         <Grid.ColumnDefinitions>
@@ -1570,7 +1581,7 @@
                                                    Text="Router QoS limits throughput but not queue depth — packets can pile up in the modem's hardware buffer before the router's shaper acts on them, causing latency spikes even under the rate limit. Consumer QoS also uses priority bands rather than true Active Queue Management (like CAKE or fq_codel), so short bursts still build up momentary queues. Setting your cap to ~70% of your line speed leaves enough headroom that neither the router queue nor the modem buffer has a chance to fill — which is what actually eliminates jitter, rather than just capping peak speed." />
                                     </Border>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                        <TextBox Width="110" Text="{Binding GlobalUploadCapKBs, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox x:Name="GlobalCapValueBox" Width="110" Text="{Binding GlobalUploadCapKBs, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBlock Text="KB/s" VerticalAlignment="Center" Margin="6,0,16,0"
                                                    Foreground="{DynamicResource SubtleTextBrush}" />
                                         <Button Content="Apply" Command="{Binding ApplyGlobalUploadCapCommand}"
@@ -1677,7 +1688,7 @@
                             </Border>
 
                             <!-- Ping Monitor -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <Border x:Name="CardPingMonitor" Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Ping Monitor" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,14"
@@ -1723,8 +1734,23 @@
                                                       IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
                                                       Click="OnThemeToggleClick" />
                                     </Grid>
-                                    <CheckBox Content="Use Windows accent color"
-                                              IsChecked="{Binding UseWindowsAccent}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Domain accent — dominant color per mode -->
+                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Domain Accent" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
+                                               TextWrapping="Wrap" Text="The dominant color for each mode — drives the header switch, nav, and the two A's. Network is cool by default, Hardware warm (thermal). Light theme deepens it for contrast." />
+                                    <TextBlock Text="Network" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
+                                    <ItemsControl x:Name="NetworkAccentSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBlock Text="Hardware" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="HardwareAccentSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
                                 </StackPanel>
                             </Border>
 
@@ -1796,7 +1822,7 @@
                         <!-- ══ SCENARIOS tab ══ -->
                         <StackPanel x:Name="SettingsTabScenario" Visibility="Collapsed">
 
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <Border x:Name="CardScenarios" Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Scenario profiles" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6" />
                                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,14"
@@ -1914,6 +1940,50 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!-- LIMITS & SCENARIOS (Network mode) — cards reparented here at load -->
+                <ScrollViewer x:Name="LimitsScenariosPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,8,0,16">
+                        <Grid Margin="0,0,0,16">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="4" CornerRadius="2" Margin="0,4,12,4"
+                                        Background="{DynamicResource AccentGradientVerticalBrush}" />
+                                <StackPanel>
+                                    <TextBlock Text="Limits &amp; Scenarios" FontSize="22" FontWeight="Bold" />
+                                    <TextBlock Text="Per-app limits · profiles · global cap · ping · scenarios"
+                                               FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Apps with active limits (read-only summary) -->
+                        <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Apps with limits" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="APP" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="↑ UP KB/s" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="2" Text="↓ DOWN KB/s" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Right" />
+                                </Grid>
+                                <ItemsControl x:Name="LimitedAppsList" />
+                                <TextBlock x:Name="LimitedAppsEmpty"
+                                           Text="No apps have limits or blocks yet. Right-click an app in Live Traffic to set one."
+                                           FontSize="11" Foreground="{DynamicResource MutedTextBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Limit Profiles · Global Cap · Ping Monitor · Scenario editor are moved here at load -->
+                        <StackPanel x:Name="LimitsHost" />
+                    </StackPanel>
+                </ScrollViewer>
+
                 <!-- HARDWARE MONITOR -->
                 <ScrollViewer x:Name="HardwareMonitorPanel" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto">
@@ -1932,6 +2002,107 @@
                                      HorizontalAlignment="Right" VerticalAlignment="Center"
                                      Fill="{DynamicResource SuccessBrush}" Opacity="0.35"
                                      ToolTip="Refreshing every 2 s" />
+                        </Grid>
+
+                        <!-- ══ Hero: thermal radial gauges + overlaid CPU/GPU temp timeline ══ -->
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Gauges -->
+                            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="20,16">
+                                <StackPanel>
+                                    <TextBlock Text="SYSTEM HEALTH" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource MutedTextBrush}" Margin="2,0,0,12" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- CPU gauge -->
+                                        <StackPanel Width="120">
+                                            <Grid Height="120">
+                                                <Canvas x:Name="CpuGauge" SizeChanged="OnHwHeroSizeChanged" />
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <TextBlock x:Name="CpuGaugeVal" Text="—" FontSize="25" FontWeight="Bold"
+                                                                   FontFamily="{StaticResource RobotoMonoFamily}" />
+                                                        <TextBlock x:Name="CpuGaugeUnit" Text="°C" FontSize="13" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource SubtleTextBrush}"
+                                                                   VerticalAlignment="Bottom" Margin="2,0,0,3" />
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="CpuGaugeSub" Text="load —%" FontSize="10"
+                                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="CPU" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource SubtleTextBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <!-- GPU gauge -->
+                                        <StackPanel Width="120">
+                                            <Grid Height="120">
+                                                <Canvas x:Name="GpuGauge" SizeChanged="OnHwHeroSizeChanged" />
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <TextBlock x:Name="GpuGaugeVal" Text="—" FontSize="25" FontWeight="Bold"
+                                                                   FontFamily="{StaticResource RobotoMonoFamily}" />
+                                                        <TextBlock x:Name="GpuGaugeUnit" Text="°C" FontSize="13" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource SubtleTextBrush}"
+                                                                   VerticalAlignment="Bottom" Margin="2,0,0,3" />
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="GpuGaugeSub" Text="load —%" FontSize="10"
+                                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="GPU" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource SubtleTextBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <!-- RAM gauge -->
+                                        <StackPanel Width="120">
+                                            <Grid Height="120">
+                                                <Canvas x:Name="RamGauge" SizeChanged="OnHwHeroSizeChanged" />
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <TextBlock x:Name="RamGaugeVal" Text="—" FontSize="25" FontWeight="Bold"
+                                                                   FontFamily="{StaticResource RobotoMonoFamily}" />
+                                                        <TextBlock x:Name="RamGaugeUnit" Text="GB" FontSize="13" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource SubtleTextBrush}"
+                                                                   VerticalAlignment="Bottom" Margin="2,0,0,3" />
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="RamGaugeSub" Text="—%" FontSize="10"
+                                                               Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="MEMORY" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource SubtleTextBrush}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Overlaid CPU + GPU temperature timeline (shared time axis) -->
+                            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18,16">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="TEMPERATURE TIMELINE" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,8" />
+                                    <Canvas Grid.Row="1" x:Name="OverlayTempChart" MinHeight="150"
+                                            SizeChanged="OnHwHeroSizeChanged" />
+                                    <Canvas Grid.Row="1" x:Name="OverlayTempOverlay" Background="Transparent"
+                                            MouseMove="OnOverlayTempMouseMove" MouseLeave="OnHwChartMouseLeave" />
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Border Width="14" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                                Background="{DynamicResource ChartCpuBrush}" Margin="0,0,6,0" />
+                                        <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,16,0" />
+                                        <Border Width="14" Height="3" CornerRadius="2" VerticalAlignment="Center"
+                                                Background="{DynamicResource ChartGpuBrush}" Margin="0,0,6,0" />
+                                        <TextBlock Text="GPU" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </Grid>
 
                         <!-- ══ Cards Grid (3 equal columns with 14-px gutters) ══ -->
@@ -1960,10 +2131,13 @@
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
                                         <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
-                                            <TextBlock Text="&#xE950;"
-                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                       FontSize="15" Foreground="{DynamicResource AccentBrush}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                                                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Data="M5 5h14v14H5z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3" />
+                                                </Canvas>
+                                            </Viewbox>
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="CPU" FontSize="11" FontWeight="SemiBold"
@@ -2075,10 +2249,13 @@
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
                                         <Border Background="#20F39C12" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
-                                            <TextBlock Text="&#xE7F4;"
-                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                       FontSize="15" Foreground="{DynamicResource ChartUpBrush}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Stroke="{DynamicResource ChartGpuBrush}" StrokeThickness="2"
+                                                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Data="M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8 20h8 M12 16v4" />
+                                                </Canvas>
+                                            </Viewbox>
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="GPU" FontSize="11" FontWeight="SemiBold"
@@ -2224,10 +2401,13 @@
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
                                         <Border Background="#203DBA6F" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
-                                            <TextBlock Text="&#xE179;"
-                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                       FontSize="15" Foreground="{DynamicResource SuccessBrush}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Stroke="{DynamicResource ChartRamBrush}" StrokeThickness="2"
+                                                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Data="M2 8h20v9H2z M6 8V5 M10 8V5 M14 8V5 M18 8V5 M6 17v2 M18 17v2" />
+                                                </Canvas>
+                                            </Viewbox>
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="RAM" FontSize="11" FontWeight="SemiBold"
@@ -2386,10 +2566,5 @@
             </Grid>
         </Grid>
 
-        <!-- ═════════════════ Status bar ═════════════════ -->
-        <Border Grid.Row="2" Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,6">
-            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource SubtleTextBrush}" />
-        </Border>
     </Grid>
 </Window>

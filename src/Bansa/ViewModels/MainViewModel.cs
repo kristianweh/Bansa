@@ -294,21 +294,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnUseWindowsAccentChanged(bool value)
     {
+        // Accent is now owned per-domain by DomainManager; this legacy setting no longer
+        // drives the accent. Persist it and re-assert the domain accent.
         App.Settings.UseWindowsAccent = value;
         SettingsManager.Save(App.Settings);
-
-        if (value)
-        {
-            var c = WindowsAccent.Get();
-            var brush = new System.Windows.Media.SolidColorBrush(c);
-            if (brush.CanFreeze) brush.Freeze();
-            Application.Current.Resources["AccentBrush"] = brush;
-        }
-        else
-        {
-            // Reset to theme-default by reapplying the active theme
-            ThemeManager.Apply(ThemeManager.Current);
-        }
+        DomainManager.Apply(DomainManager.Current);
     }
 
     public void SetDownColor(string hex)
@@ -886,6 +876,40 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"Limits set: {app.Name}  ↑ {Format.KBps(up)}  ↓ {Format.KBps(down)}"
                 : $"Warning: limits may not have applied for {app.Name} — run Cleanup in Settings if throttling persists.";
         }
+    }
+
+    /// <summary>
+    /// Sets (or clears, when both are 0) a per-app limit addressed by executable path —
+    /// used by the Limits &amp; Scenarios inline editor where the app may not be running.
+    /// If the app IS running, defers to the normal row-based path so its UI badges update.
+    /// </summary>
+    public async Task SetLimitByPathAsync(string imagePath, int upKbps, int downKbps)
+    {
+        if (string.IsNullOrEmpty(imagePath)) return;
+
+        var running = Apps.FirstOrDefault(a =>
+            string.Equals(a.ImagePath, imagePath, StringComparison.OrdinalIgnoreCase));
+        if (running is not null)
+        {
+            await ApplyLimitsAsync((running, upKbps, downKbps));
+            return;
+        }
+
+        var key = imagePath.ToLowerInvariant();
+        bool clearUp = upKbps <= 0, clearDown = downKbps <= 0;
+
+        if (clearUp || clearDown)
+            await _downloadThrottler.ClearAndVerifyAsync(imagePath, clearDown: clearDown, clearUp: clearUp);
+
+        if (!clearUp)  { _downloadThrottler.SetUploadLimit(imagePath, upKbps);     App.Settings.AppUploadLimitsKBs[key]   = upKbps; }
+        else           RemoveLimitByFile(App.Settings.AppUploadLimitsKBs,   imagePath);
+        if (!clearDown){ _downloadThrottler.SetDownloadLimit(imagePath, downKbps); App.Settings.AppDownloadLimitsKBs[key] = downKbps; }
+        else           RemoveLimitByFile(App.Settings.AppDownloadLimitsKBs, imagePath);
+
+        SettingsManager.Save(App.Settings);
+        StatusText = clearUp && clearDown
+            ? $"Limits cleared: {System.IO.Path.GetFileNameWithoutExtension(imagePath)}."
+            : $"Limits set: {System.IO.Path.GetFileNameWithoutExtension(imagePath)}  ↑ {Format.KBps(upKbps)}  ↓ {Format.KBps(downKbps)}";
     }
 
     [RelayCommand]

@@ -11,7 +11,6 @@ using Bansa.ViewModels;
 
 using Color = System.Windows.Media.Color;
 using Point = System.Windows.Point;
-using WinForms = System.Windows.Forms;
 
 namespace Bansa.Views;
 
@@ -19,18 +18,21 @@ namespace Bansa.Views;
 /// Small always-on-top floating overlay: sparkline chart + live ping + top 5 apps
 /// + optional hardware stats panel (CPU / GPU / RAM).
 ///
-/// Drag:   WindowChrome CaptionHeight="28"
+/// Drag:   rates bar + bottom mode-switch bar (DragMove)
 /// Resize: WindowChrome ResizeBorderThickness="6"
-/// Snap:   LocationChanged nudges window to screen edge within SnapDistance DIPs.
 /// </summary>
 public partial class FloatingGraphWindow : Window
 {
-    private const double SnapDistance  = 16.0;
     private const double SparkWidth    = 190.0;   // below: chart-only spark mode
     private const double CompactWidth  = 260.0;   // below: apps list hidden
+    private const double TabIconWidth  = 320.0;   // below: mode tabs show icons, not text
+    private bool _floatTabsIcon;
 
     private enum LayoutMode { Full, Compact, Spark }
     private LayoutMode _layoutMode = LayoutMode.Full;
+
+    // Mockup HUD tabs: Net = graph+ping+apps · Temp = thermals · Both = everything
+    private enum FloatMode { Net, Temp, Both }
 
     private IReadOnlyList<(long Down, long Up)> _history = Array.Empty<(long, long)>();
     private Color _downColor = Color.FromRgb(0x5D, 0xAD, 0xE2);
@@ -63,6 +65,12 @@ public partial class FloatingGraphWindow : Window
     private readonly Queue<int> _pingHistory = new();
     private const int PingHistoryLen = 10;
 
+    // ── Temp history for the Temp-tab gauges + overlaid CPU/GPU graph ──────────
+    private const int FloatTempLen = 60;
+    private readonly float[] _fCpuTemp = new float[FloatTempLen];
+    private readonly float[] _fGpuTemp = new float[FloatTempLen];
+    private int _fTempHead, _fTempCount;
+
     // ── Edge-snap guard (kept for future use; snap removed per user request) ──
     // private bool _suppressLocationChanged;
 
@@ -94,8 +102,14 @@ public partial class FloatingGraphWindow : Window
 
         Topmost = s.FloatGraphTopmost;
 
-        // Apply initial section layout (Graph + Apps always visible; HW based on settings)
-        InitSections(s.ShowHardwarePanel);
+        // Select the saved view mode tab — its Checked handler applies the section layout.
+        var mode = Enum.TryParse<FloatMode>(s.FloatViewMode, out var fm) ? fm : FloatMode.Net;
+        switch (mode)
+        {
+            case FloatMode.Temp: TabTemp.IsChecked = true; break;
+            case FloatMode.Both: TabBoth.IsChecked = true; break;
+            default:             TabNet.IsChecked  = true; break;
+        }
 
         // Subscribe to hardware monitor — fires every ~2 s on a background thread
         if (HardwareMonitor.Instance is { } hw)
@@ -446,60 +460,43 @@ public partial class FloatingGraphWindow : Window
 
     private void UpdateHardwareDisplay(HardwareSnapshot snap)
     {
+        // Accumulate temp history even while the section is hidden so the graph is
+        // ready the instant the user switches to the Temp/Both tab.
+        if (snap != HardwareSnapshot.Empty)
+        {
+            _fCpuTemp[_fTempHead] = snap.CpuTemp > 0 ? (float)snap.CpuTemp : 0f;
+            _fGpuTemp[_fTempHead] = snap.GpuTemp > 0 ? (float)snap.GpuTemp : 0f;
+            _fTempHead = (_fTempHead + 1) % FloatTempLen;
+            if (_fTempCount < FloatTempLen) _fTempCount++;
+        }
+
         if (HwSection.Visibility != Visibility.Visible) return;
 
-        // ── CPU ──────────────────────────────────────────────────────────────
-        CpuTempFloat.Text = snap.CpuTemp > 0 ? $"{snap.CpuTemp:0}" : "—";
+        // ── CPU gauge ──────────────────────────────────────────────────────────
         if (snap.CpuTemp > 0)
         {
-            var cpuB = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
-            CpuTempFloat.Foreground  = cpuB;
-            CpuTempDegree.Foreground = cpuB;
+            var c = TempHeatColor(snap.CpuTemp);
+            CpuTempFloat.Text = $"{snap.CpuTemp:0}°";
+            CpuTempFloat.Foreground = new SolidColorBrush(c);
+            CpuLoadFloat.Text = $"load {snap.CpuLoad:0}%";
+            DrawFloatGauge(CpuGaugeFloat, snap.CpuTemp, 30, 95, c);
         }
-        double cpuBgW = CpuBarBg.ActualWidth;
-        CpuBarFill.Width = cpuBgW * snap.CpuLoad / 100.0;
-        var cpuLines = new System.Text.StringBuilder();
-        cpuLines.Append($"{snap.CpuLoad:0}%");
-        if (snap.CpuTemp > 0) cpuLines.Append($"  {snap.CpuTemp:0}°C");
-        if (snap.CpuFreqMHz > 0) cpuLines.Append($"\n{snap.CpuFreqMHz / 1000f:0.0} GHz");
-        CpuStatsText.Text = cpuLines.ToString();
+        else { CpuTempFloat.Text = "—"; CpuLoadFloat.Text = "load —%"; DrawFloatGauge(CpuGaugeFloat, 0, 30, 95, default); }
 
-        // ── GPU ──────────────────────────────────────────────────────────────
-        GpuTempFloat.Text = snap.GpuTemp > 0 ? $"{snap.GpuTemp:0}" : "—";
+        // ── GPU gauge ──────────────────────────────────────────────────────────
         if (snap.GpuTemp > 0)
         {
-            var gpuB = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
-            GpuTempFloat.Foreground  = gpuB;
-            GpuTempDegree.Foreground = gpuB;
+            var c = TempHeatColor(snap.GpuTemp);
+            GpuTempFloat.Text = $"{snap.GpuTemp:0}°";
+            GpuTempFloat.Foreground = new SolidColorBrush(c);
+            GpuLoadFloat.Text = $"load {snap.GpuLoad:0}%";
+            DrawFloatGauge(GpuGaugeFloat, snap.GpuTemp, 30, 95, c);
         }
-        double gpuBgW = GpuBarBg.ActualWidth;
-        GpuBarFill.Width = gpuBgW * snap.GpuLoad / 100.0;
-        var gpuLines = new System.Text.StringBuilder();
-        gpuLines.Append($"{snap.GpuLoad:0}%");
-        if (snap.GpuTemp > 0) gpuLines.Append($"  {snap.GpuTemp:0}°C");
-        if (snap.GpuPowerW > 0) gpuLines.Append($"  {snap.GpuPowerW:0}W");
-        if (snap.GpuCoreMHz > 0) gpuLines.Append($"\n{snap.GpuCoreMHz:0} MHz");
-        GpuStatsText.Text = gpuLines.ToString();
+        else { GpuTempFloat.Text = "—"; GpuLoadFloat.Text = "load —%"; DrawFloatGauge(GpuGaugeFloat, 0, 30, 95, default); }
 
-        // Tooltip shows the full GPU name + fan if available
-        string gpuTip = snap.GpuName.Length > 0 ? snap.GpuName : "";
-        if (snap.GpuFanRpm > 0) gpuTip += $"  ·  Fan {snap.GpuFanRpm:0} RPM";
-        GpuRow.ToolTip = gpuTip.Length > 0 ? gpuTip : null;
+        DrawFloatTempChart();
 
-        // ── VRAM sub-row (inside GPU box) ─────────────────────────────────────
-        if (snap.GpuVramTotalMb > 0)
-        {
-            VramRow.Visibility = Visibility.Visible;
-            double vramBgW = VramBarBg.ActualWidth;
-            VramBarFill.Width = vramBgW * snap.GpuVramUsedMb / snap.GpuVramTotalMb;
-            VramStatsText.Text = $"{snap.GpuVramUsedMb / 1024f:0.1}/{snap.GpuVramTotalMb / 1024f:0.0}G";
-        }
-        else
-        {
-            VramRow.Visibility = Visibility.Collapsed;
-        }
-
-        // ── RAM ──────────────────────────────────────────────────────────────
+        // ── RAM (unchanged) ──────────────────────────────────────────────────
         double ramBgW = RamBarBg.ActualWidth;
         if (snap.RamTotalGb > 0)
         {
@@ -514,45 +511,197 @@ public partial class FloatingGraphWindow : Window
         }
     }
 
+    private void OnFloatGaugeSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (HardwareMonitor.Instance is { Latest: var snap } && snap != HardwareSnapshot.Empty)
+            UpdateHardwareDisplay(snap);
+    }
+
+    private static Color ChartColorOf(string key, Color fb)
+        => (Application.Current.TryFindResource(key) as SolidColorBrush)?.Color ?? fb;
+
+    /// <summary>270° radial gauge: subtle track + value arc (gap at the bottom), matching the Hardware tab.</summary>
+    private void DrawFloatGauge(Canvas c, double value, double min, double max, Color color)
+    {
+        c.Children.Clear();
+        double w = c.ActualWidth, h = c.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        double cx = w / 2, cy = h / 2, r = Math.Min(w, h) / 2 - 6;
+        if (r <= 0) return;
+
+        var track = Application.Current.TryFindResource("BgBrush") as System.Windows.Media.Brush
+                    ?? Frozen(Color.FromRgb(0x0B, 0x0C, 0x11));
+        AddFloatArc(c, cx, cy, r, 225, 270, track, 7);
+
+        double frac = max > min ? Math.Clamp((value - min) / (max - min), 0, 1) : 0;
+        if (frac > 0.002) AddFloatArc(c, cx, cy, r, 225, 270 * frac, new SolidColorBrush(color), 7);
+    }
+
+    private static void AddFloatArc(Canvas c, double cx, double cy, double r,
+                                    double startDeg, double sweepDeg, System.Windows.Media.Brush stroke, double thick)
+    {
+        double a0 = startDeg * Math.PI / 180.0;
+        double a1 = (startDeg - sweepDeg) * Math.PI / 180.0;   // clockwise = decreasing angle
+        var p0 = new Point(cx + r * Math.Cos(a0), cy - r * Math.Sin(a0));
+        var p1 = new Point(cx + r * Math.Cos(a1), cy - r * Math.Sin(a1));
+        var fig = new PathFigure { StartPoint = p0, IsFilled = false };
+        fig.Segments.Add(new ArcSegment(p1, new System.Windows.Size(r, r), 0, sweepDeg > 180, SweepDirection.Clockwise, true));
+        c.Children.Add(new Path
+        {
+            Data = new PathGeometry(new[] { fig }),
+            Stroke = stroke, StrokeThickness = thick,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
+        });
+    }
+
+    /// <summary>CPU + GPU temperature lines overlaid on one shared time axis.</summary>
+    private void DrawFloatTempChart()
+    {
+        var canvas = FloatTempChart;
+        canvas.Children.Clear();
+        int count = _fTempCount, head = _fTempHead, len = FloatTempLen;
+        if (count < 2) return;
+        double w = canvas.ActualWidth, h = canvas.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        float dMin = float.MaxValue, dMax = float.MinValue;
+        void Scan(float[] b)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                float v = b[(head - count + i + len) % len];
+                if (v > 0) { if (v < dMin) dMin = v; if (v > dMax) dMax = v; }
+            }
+        }
+        Scan(_fCpuTemp); Scan(_fGpuTemp);
+        if (dMax < dMin) { dMin = 0; dMax = 1; }
+        if (dMax <= dMin) dMax = dMin + 1;
+        float range = dMax - dMin, sMin = dMin - range * 0.12f, sMax = dMax + range * 0.12f;
+
+        var grid = Application.Current.TryFindResource("BorderBrush") as System.Windows.Media.Brush
+                   ?? Frozen(Color.FromArgb(40, 255, 255, 255));
+        for (int g = 1; g <= 2; g++)
+        {
+            double yy = h * g / 3.0;
+            canvas.Children.Add(new Line { X1 = 0, X2 = w, Y1 = yy, Y2 = yy, Stroke = grid, StrokeThickness = 1 });
+        }
+
+        void Draw(float[] b, Color col)
+        {
+            // Collect contiguous runs (gap wherever a sample is unavailable).
+            var runs = new List<List<Point>>();
+            List<Point>? cur = null;
+            Point last = new(double.NaN, double.NaN);
+            for (int i = 0; i < count; i++)
+            {
+                float v = b[(head - count + i + len) % len];
+                if (v <= 0) { cur = null; continue; }
+                double x = i * (w / (count - 1));
+                double y = h - ((v - sMin) / (sMax - sMin)) * h;
+                var p = new Point(x, Math.Clamp(y, 0, h));
+                if (cur == null) { cur = new List<Point>(); runs.Add(cur); }
+                cur.Add(p);
+                last = p;
+            }
+            if (runs.Count == 0) return;
+
+            // Soft vertical gradient under the line — fades to transparent at the bottom (mockup look).
+            var grad = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x70, col.R, col.G, col.B), 0));
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x14, col.R, col.G, col.B), 0.7));
+            grad.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, col.R, col.G, col.B), 1));
+            var strokeBrush = new SolidColorBrush(col);
+
+            foreach (var run in runs)
+            {
+                if (run.Count >= 2)
+                    canvas.Children.Add(new Path { Data = SmoothPath(run, true, h), Fill = grad });
+                canvas.Children.Add(new Path { Data = SmoothPath(run, false, h), Stroke = strokeBrush, StrokeThickness = 1.8, StrokeLineJoin = PenLineJoin.Round });
+            }
+            if (!double.IsNaN(last.X))
+            {
+                var d = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(col) };
+                Canvas.SetLeft(d, last.X - 3); Canvas.SetTop(d, last.Y - 3);
+                canvas.Children.Add(d);
+            }
+        }
+        Draw(_fCpuTemp, ChartColorOf("ChartCpuBrush", Color.FromRgb(0x5D, 0xAD, 0xE2)));
+        Draw(_fGpuTemp, ChartColorOf("ChartGpuBrush", Color.FromRgb(0xFF, 0x88, 0x32)));
+
+        var lbl = Application.Current.TryFindResource("SubtleTextBrush") as System.Windows.Media.Brush
+                  ?? Frozen(Color.FromArgb(140, 200, 210, 220));
+        void Label(string t, double top)
+        {
+            var tb = new TextBlock { Text = t, FontSize = 8, Foreground = lbl, IsHitTestVisible = false };
+            Canvas.SetLeft(tb, 2); Canvas.SetTop(tb, top);
+            canvas.Children.Add(tb);
+        }
+        Label($"{dMax:0}°", 0);
+        Label($"{dMin:0}°", h - 11);
+    }
+
     // ── Section layout initializer ─────────────────────────────────────────────
 
-    /// <summary>
-    /// Sets initial row heights and section visibility.
-    /// Graph and Apps are always shown; the hardware panel respects the persisted setting.
-    /// Sections are resizable via the GridSplitters.
-    /// </summary>
-    private void InitSections(bool showHw)
+    private void OnFloatModeChecked(object sender, RoutedEventArgs e)
     {
-        // Graph — always visible
-        GraphSection.Visibility = Visibility.Visible;
-        GraphRow.Height    = new GridLength(3, GridUnitType.Star);
-        GraphRow.MinHeight = 130;  // chart (≥50) + rates strip (40) + ping strip (40)
+        if (sender is not System.Windows.Controls.RadioButton rb || rb.Tag is not string tag) return;
+        if (!Enum.TryParse<FloatMode>(tag, out var mode)) return;
+        ApplyViewMode(mode);
+        if (App.Settings is not null)
+        {
+            App.Settings.FloatViewMode = mode.ToString();
+            SettingsManager.Save(App.Settings);
+        }
+    }
 
-        // Splitter 1 — always visible (Graph and Apps are always present)
-        Splitter1.Visibility = Visibility.Visible;
-        S1Row.Height = new GridLength(8);
+    /// <summary>
+    /// Applies section visibility / row heights for the selected HUD tab.
+    /// Net = graph + ping + apps · Temp = thermals only · Both = everything (resizable).
+    /// </summary>
+    private void ApplyViewMode(FloatMode mode)
+    {
+        bool showGraph = mode != FloatMode.Temp;
+        bool showApps  = mode != FloatMode.Temp;
+        bool showHw    = mode != FloatMode.Net;
 
-        // Apps — always visible
-        AppsSection.Visibility = Visibility.Visible;
-        AppsRow.Height    = new GridLength(2, GridUnitType.Star);
-        AppsRow.MinHeight = 60;
+        GraphSection.Visibility = showGraph ? Visibility.Visible : Visibility.Collapsed;
+        GraphRow.Height    = showGraph ? new GridLength(3, GridUnitType.Star) : new GridLength(0);
+        GraphRow.MinHeight = showGraph ? 130 : 0;
 
-        // Hardware — driven by persisted setting
+        bool s1 = showGraph && showApps;
+        Splitter1.Visibility = s1 ? Visibility.Visible : Visibility.Collapsed;
+        S1Row.Height = s1 ? new GridLength(8) : new GridLength(0);
+
+        AppsSection.Visibility = showApps ? Visibility.Visible : Visibility.Collapsed;
+        AppsRow.Height    = showApps ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
+        AppsRow.MinHeight = showApps ? 60 : 0;
+
+        bool s2 = showApps && showHw;
+        Splitter2.Visibility = s2 ? Visibility.Visible : Visibility.Collapsed;
+        S2Row.Height = s2 ? new GridLength(8) : new GridLength(0);
+
         HwSection.Visibility = showHw ? Visibility.Visible : Visibility.Collapsed;
-        HwRow.Height    = showHw ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
-        HwRow.MinHeight = showHw ? 60 : 0;
+        // Both: gauges + RAM are fixed-height, so size the row to its content (Auto) — a star
+        // height would leave dead space below RAM, pushing the bottom toggle bar too far down.
+        // Temp: the temp graph is a star row that should grow with the window, so HwRow = star.
+        if (!showHw)                     { HwRow.Height = new GridLength(0);                       HwRow.MinHeight = 0;  }
+        else if (mode == FloatMode.Both) { HwRow.Height = GridLength.Auto;                         HwRow.MinHeight = 0;  }
+        else                             { HwRow.Height = new GridLength(2, GridUnitType.Star);    HwRow.MinHeight = 60; }
 
-        // Splitter 2 — only useful when HW panel is visible
-        Splitter2.Visibility = showHw ? Visibility.Visible : Visibility.Collapsed;
-        S2Row.Height = showHw ? new GridLength(8) : new GridLength(0);
+        // The big CPU/GPU temp graph belongs to the Temp tab only. In Both we keep the
+        // old compact layout (graph + apps + CPU/GPU donuts + RAM), no temp graph.
+        bool tempGraph = mode == FloatMode.Temp;
+        FloatTempGraphBox.Visibility = tempGraph ? Visibility.Visible : Visibility.Collapsed;
+        FloatTempGraphRow.Height = tempGraph ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
 
-        // Populate HW immediately if data already exists
         if (showHw &&
             HardwareMonitor.Instance is { Latest: var snap } &&
             snap != HardwareSnapshot.Empty)
         {
             UpdateHardwareDisplay(snap);
         }
+        if (showGraph)
+            Dispatcher.BeginInvoke(DrawChart, System.Windows.Threading.DispatcherPriority.Render);
     }
 
     // ── Edge snapping ──────────────────────────────────────────────────────────
@@ -577,106 +726,53 @@ public partial class FloatingGraphWindow : Window
             ApplyLayoutMode(target);
         }
 
-        // Keep WindowChrome caption height constant — no scaling needed.
+        UpdateFloatTabMode(w);
+
+        // No caption drag region — the top would otherwise swallow chart/crosshair input.
+        // Dragging is handled explicitly by the rates bar and the bottom switch bar.
         var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
-        if (chrome != null) chrome.CaptionHeight = 48.0;
+        if (chrome != null) chrome.CaptionHeight = 0.0;
 
         Dispatcher.BeginInvoke(DrawChart, System.Windows.Threading.DispatcherPriority.Render);
     }
 
+    // Width-driven density only — section layout is owned by ApplyViewMode (the tabs).
     private void ApplyLayoutMode(LayoutMode mode)
     {
-        switch (mode)
-        {
-            case LayoutMode.Full:
-                UpRatePanel.Visibility      = Visibility.Visible;
-                Splitter1.Visibility       = Visibility.Visible;
-                S1Row.Height               = new GridLength(8);
-                AppsSection.Visibility     = Visibility.Visible;
-                AppsRow.Height             = new GridLength(2, GridUnitType.Star);
-                AppsRow.MinHeight          = 60;
-                PingTargetLabel.Visibility = Visibility.Visible;
-                PingJitterText.Visibility  = Visibility.Visible;
-                if (HwSection.Visibility == Visibility.Visible)
-                {
-                    HwRow.Height         = new GridLength(2, GridUnitType.Star);
-                    HwRow.MinHeight      = 60;
-                    Splitter2.Visibility = Visibility.Visible;
-                    S2Row.Height         = new GridLength(8);
-                }
-                break;
-
-            case LayoutMode.Compact:
-                UpRatePanel.Visibility      = Visibility.Visible;
-                Splitter1.Visibility       = Visibility.Visible;
-                S1Row.Height               = new GridLength(8);
-                AppsSection.Visibility     = Visibility.Visible;
-                AppsRow.Height             = new GridLength(2, GridUnitType.Star);
-                AppsRow.MinHeight          = 60;
-                PingTargetLabel.Visibility = Visibility.Visible;
-                PingJitterText.Visibility  = Visibility.Visible;
-                if (HwSection.Visibility == Visibility.Visible)
-                {
-                    HwRow.Height         = GridLength.Auto;
-                    HwRow.MinHeight      = 0;
-                    Splitter2.Visibility = Visibility.Collapsed;
-                    S2Row.Height         = new GridLength(4);
-                }
-                break;
-
-            case LayoutMode.Spark:
-                UpRatePanel.Visibility      = Visibility.Collapsed;
-                Splitter1.Visibility       = Visibility.Visible;
-                S1Row.Height               = new GridLength(8);
-                AppsSection.Visibility     = Visibility.Visible;
-                AppsRow.Height             = new GridLength(2, GridUnitType.Star);
-                AppsRow.MinHeight          = 60;
-                PingTargetLabel.Visibility = Visibility.Collapsed;
-                PingJitterText.Visibility  = Visibility.Collapsed;
-                if (HwSection.Visibility == Visibility.Visible)
-                {
-                    HwRow.Height         = GridLength.Auto;
-                    HwRow.MinHeight      = 0;
-                    Splitter2.Visibility = Visibility.Collapsed;
-                    S2Row.Height         = new GridLength(4);
-                }
-                break;
-        }
+        bool spark = mode == LayoutMode.Spark;
+        UpRatePanel.Visibility      = spark ? Visibility.Collapsed : Visibility.Visible;
+        PingTargetLabel.Visibility  = spark ? Visibility.Collapsed : Visibility.Visible;
+        PingJitterText.Visibility   = spark ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void SnapToEdges()
+    // Mode tabs show text when there's room, icons when the window gets narrow.
+    private void UpdateFloatTabMode(double width)
     {
-        var src = PresentationSource.FromVisual(this);
-        if (src?.CompositionTarget is null) return;
+        bool icons = width < TabIconWidth;
+        if (icons == _floatTabsIcon) return;
+        _floatTabsIcon = icons;
+        SetTab(TabNet,  icons, "", "Net");    // Globe
+        SetTab(TabTemp, icons, "", "Temp");   // Processor/chip
+        SetTab(TabBoth, icons, "", "Both");   // ViewAll
+    }
 
-        double dpiX = src.CompositionTarget.TransformToDevice.M11;
-        double dpiY = src.CompositionTarget.TransformToDevice.M22;
-
-        int physLeft   = (int)(Left          * dpiX);
-        int physTop    = (int)(Top           * dpiY);
-        int physRight  = (int)((Left + Width)  * dpiX);
-        int physBottom = (int)((Top  + Height) * dpiY);
-
-        int cx = (physLeft + physRight)  / 2;
-        int cy = (physTop  + physBottom) / 2;
-        var screen = WinForms.Screen.FromPoint(new System.Drawing.Point(cx, cy));
-        var wa = screen.WorkingArea;
-
-        int snapPx = (int)(SnapDistance * Math.Max(dpiX, dpiY));
-        int newPhysLeft = physLeft;
-        int newPhysTop  = physTop;
-        bool snapped    = false;
-
-        if      (Math.Abs(physLeft   - wa.Left)   < snapPx) { newPhysLeft = wa.Left;                            snapped = true; }
-        else if (Math.Abs(physRight  - wa.Right)  < snapPx) { newPhysLeft = wa.Right  - (physRight - physLeft); snapped = true; }
-
-        if      (Math.Abs(physTop    - wa.Top)    < snapPx) { newPhysTop  = wa.Top;                             snapped = true; }
-        else if (Math.Abs(physBottom - wa.Bottom) < snapPx) { newPhysTop  = wa.Bottom - (physBottom - physTop); snapped = true; }
-
-        if (snapped)
+    private static void SetTab(System.Windows.Controls.RadioButton rb, bool icon, string glyph, string text)
+    {
+        if (icon)
         {
-            Left = newPhysLeft / dpiX;
-            Top  = newPhysTop  / dpiY;
+            rb.FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+            rb.FontSize   = 13;
+            rb.FontWeight = FontWeights.Normal;   // avoid WPF synth-bolding the glyph (looks thick)
+            rb.Content    = glyph;
+            rb.ToolTip    = text;
+        }
+        else
+        {
+            rb.ClearValue(System.Windows.Controls.Control.FontFamilyProperty);
+            rb.ClearValue(System.Windows.Controls.Control.FontSizeProperty);
+            rb.ClearValue(System.Windows.Controls.Control.FontWeightProperty);
+            rb.Content = text;
+            rb.ToolTip = null;
         }
     }
 
@@ -766,7 +862,6 @@ public partial class FloatingGraphWindow : Window
     private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         AlwaysOnTopMenu.IsChecked = Topmost;
-        ShowSystemMenu.IsChecked  = HwSection.Visibility == Visibility.Visible;
     }
 
     private void OnAlwaysOnTopMenuClick(object sender, RoutedEventArgs e)
@@ -775,15 +870,6 @@ public partial class FloatingGraphWindow : Window
         Topmost = pinned;
         if (App.Settings is not null)
             App.Settings.FloatGraphTopmost = pinned;
-    }
-
-    private void OnShowSystemMenuClick(object sender, RoutedEventArgs e)
-    {
-        bool show = ShowSystemMenu.IsChecked;
-        if (App.Settings is not null)
-            App.Settings.ShowHardwarePanel = show;
-        SettingsManager.Save(App.Settings!);
-        InitSections(show);
     }
 
     // ── Floating chart crosshair ───────────────────────────────────────────────

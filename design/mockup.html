@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en" data-domain="network">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bansa — Redesign Mockup</title>
+<style>
+  /* ============ TOKENS ============ */
+  :root{
+    --bg:#0B0F14;
+    --s1:#141A22;       /* cards, sidebar */
+    --s2:#1C2530;       /* elevated / hover / HUD */
+    --s3:#26313D;       /* menus, tooltips */
+    --border:#2A3440;
+    --tx:#E8EDF2;
+    --tx2:#9AA7B4;
+    --tx3:#6B7886;
+
+    --good:#3ECF8E;
+    --warn:#F5B445;
+    --crit:#FF5C5C;
+
+    /* domain accent (swapped by JS) */
+    --accent:#2D9CFF;
+    --accent-soft:rgba(45,156,255,.16);
+    --accent-line:#2D9CFF;
+    --accent-fill:rgba(45,156,255,.20);
+    --radius:12px;
+    --font:'Inter',-apple-system,'Segoe UI Variable','Segoe UI',system-ui,sans-serif;
+  }
+  html[data-domain="hardware"]{
+    --accent:#FF8A3D;
+    --accent-soft:rgba(255,138,61,.16);
+    --accent-line:#FF8A3D;
+    --accent-fill:rgba(255,138,61,.20);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:var(--font);background:var(--bg);color:var(--tx);
+    font-feature-settings:"tnum" 1, "cv01" 1; -webkit-font-smoothing:antialiased;
+    height:100vh;overflow:hidden;font-size:13px;
+  }
+  .tnum{font-variant-numeric:tabular-nums}
+  .app{display:grid;grid-template-columns:208px 1fr;grid-template-rows:52px 1fr;height:100vh}
+
+  /* ============ HEADER ============ */
+  header{
+    grid-column:1/3;display:flex;align-items:center;gap:18px;
+    padding:0 18px;background:var(--s1);border-bottom:1px solid var(--border);
+  }
+  .wordmark{font-weight:700;letter-spacing:.14em;font-size:15px}
+  .wordmark span{color:var(--accent);transition:color .3s}
+  .ver{color:var(--tx3);font-size:11px;letter-spacing:.04em}
+
+  /* segmented domain toggle */
+  .seg{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px}
+  .seg button{
+    border:0;background:transparent;color:var(--tx2);font:inherit;font-weight:600;
+    padding:5px 16px;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:7px;
+    transition:.18s;
+  }
+  .seg button .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.5}
+  .seg button[data-on="network"].active{background:#143A5E;color:#7FC2FF}
+  .seg button[data-on="hardware"].active{background:#4A2A12;color:#FFB37A}
+  .seg button.active .dot{opacity:1}
+  .spacer{flex:1}
+  .hbtn{
+    display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--border);
+    color:var(--tx);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit;font-weight:600;
+  }
+  .hbtn:hover{background:var(--s3)}
+  .rec-dot{width:9px;height:9px;border-radius:50%;background:var(--crit);box-shadow:0 0 0 0 rgba(255,92,92,.5);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,92,92,.5)}70%{box-shadow:0 0 0 7px rgba(255,92,92,0)}100%{box-shadow:0 0 0 0 rgba(255,92,92,0)}}
+  .gear{width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--tx2);cursor:pointer}
+  .gear:hover{background:var(--s2)}
+
+  /* ============ SIDEBAR ============ */
+  nav{background:var(--s1);border-right:1px solid var(--border);padding:14px 10px;display:flex;flex-direction:column;gap:3px}
+  .nav-group{color:var(--tx3);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:14px 10px 6px}
+  .nav-item{
+    display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--tx2);
+    cursor:pointer;font-weight:500;transition:.15s;position:relative;
+  }
+  .nav-item svg{width:17px;height:17px;flex:0 0 17px}
+  .nav-item:hover{background:var(--s2);color:var(--tx)}
+  .nav-item.active{background:var(--accent-soft);color:var(--accent)}
+  .nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--accent)}
+  .nav-foot{margin-top:auto}
+
+  /* ============ MAIN ============ */
+  main{overflow:auto;padding:18px 20px 28px}
+  main::-webkit-scrollbar{width:10px}
+  main::-webkit-scrollbar-thumb{background:var(--s2);border-radius:6px;border:3px solid var(--bg)}
+  .page-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+  .page-head h1{font-size:18px;font-weight:600;letter-spacing:-.01em}
+  .page-head .sub{color:var(--tx2);font-size:12px}
+
+  .grid{display:grid;gap:14px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+  .card.elev{background:var(--s1)}
+  .card h3{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx2);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .pill{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;letter-spacing:.02em}
+  .pill.good{background:rgba(62,207,142,.14);color:var(--good)}
+  .pill.warn{background:rgba(245,180,69,.14);color:var(--warn)}
+  .pill.crit{background:rgba(255,92,92,.14);color:var(--crit)}
+
+  /* hero metric */
+  .metric .val{font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1}
+  .metric .unit{font-size:13px;color:var(--tx2);font-weight:500;margin-left:5px}
+  .metric .label{font-size:11px;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px}
+  .metric .spark{margin-top:12px}
+
+  .row{display:flex;align-items:center;gap:10px}
+  .legend{display:flex;flex-direction:column;gap:9px}
+  .legend .li{display:flex;align-items:center;gap:9px;font-size:12px}
+  .legend .sw{width:9px;height:9px;border-radius:3px}
+  .legend .nm{flex:1;color:var(--tx)}
+  .legend .vv{color:var(--tx2);font-weight:600}
+
+  /* hardware gauges */
+  .gauges{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .gauge-val{font-size:26px;font-weight:600;letter-spacing:-.02em}
+  .gauge-unit{font-size:12px;color:var(--tx2);font-weight:500}
+  .gauge-sub{font-size:11px;color:var(--tx2)}
+  .gauge-name{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx2);margin-top:2px}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;color:var(--tx3);font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:8px;border-bottom:1px solid rgba(42,52,64,.5)}
+  tr:last-child td{border-bottom:0}
+  td .app{display:flex;align-items:center;gap:9px}
+  td .ico{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
+  .bar{height:5px;border-radius:3px;background:var(--s2);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:3px}
+
+  .hidden{display:none !important}
+
+  /* ============ FLOATING HUD ============ */
+  .hud{
+    position:fixed;right:26px;bottom:26px;width:260px;background:var(--s2);
+    border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.55);
+    overflow:hidden;backdrop-filter:blur(8px);
+  }
+  .hud-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:grab}
+  .hud-bar .t{font-size:11px;color:var(--tx2);letter-spacing:.05em;text-transform:uppercase;flex:1}
+  .hud-modes{display:flex;background:var(--bg);border-radius:7px;padding:2px}
+  .hud-modes button{border:0;background:transparent;color:var(--tx3);font:inherit;font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer}
+  .hud-modes button.on{background:var(--accent-soft);color:var(--accent)}
+  .hud-body{padding:0 12px 12px}
+  .hud-read{display:flex;justify-content:space-between;font-size:11px;margin:8px 2px 2px}
+  .hud-read b{font-weight:600}
+  .caption{font-size:10px;color:var(--tx3);text-align:center;padding:14px 16px;line-height:1.5}
+  .floatnote{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);color:var(--tx3);font-size:11px;background:var(--s1);border:1px solid var(--border);padding:6px 14px;border-radius:20px}
+  .floatnote b{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- HEADER -->
+  <header>
+    <div class="row" style="gap:9px">
+      <div class="wordmark">BAN<span>SA</span></div>
+      <div class="ver">v1.0</div>
+    </div>
+    <div class="seg" id="seg">
+      <button data-on="network" class="active" onclick="setDomain('network')"><span class="dot"></span>Network</button>
+      <button data-on="hardware" onclick="setDomain('hardware')"><span class="dot"></span>Hardware</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="hbtn"><span class="rec-dot"></span>Record session</button>
+    <div class="gear">
+      <svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 2.6h.1A2 2 0 0 1 13 2.6a1.6 1.6 0 0 0 2.7-1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.1a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav>
+    <!-- network nav -->
+    <div class="dom net">
+      <div class="nav-group">Network</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Live traffic</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Limits &amp; Scenarios</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>History</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>Tools</div>
+    </div>
+    <!-- hardware nav -->
+    <div class="dom hw hidden">
+      <div class="nav-group">Hardware</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Sensors</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V4a2 2 0 0 0-4 0v10.76a4 4 0 1 0 4 0z"/></svg>Temps</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>History</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>Tools</div>
+    </div>
+
+    <div class="nav-foot">
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8M4.6 9A1.6 1.6 0 0 0 4.3 7"/></svg>Settings</div>
+    </div>
+  </nav>
+
+  <!-- ============ NETWORK DASHBOARD ============ -->
+  <main id="net-main">
+    <div class="page-head">
+      <h1>Network</h1><div class="sub">Live · 14 active apps · 1.2 Gbps link</div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1.1fr">
+      <div class="card metric">
+        <div class="label">Download</div>
+        <div><span class="val tnum">84.2</span><span class="unit">MB/s</span></div>
+        <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+          <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent-line)" stop-opacity=".35"/><stop offset="1" stop-color="var(--accent-line)" stop-opacity="0"/></linearGradient></defs>
+          <path d="M0,26 C20,24 30,12 50,14 C70,16 80,8 100,10 C120,12 135,4 160,8 C180,11 190,9 200,10 L200,34 L0,34Z" fill="url(#g1)"/>
+          <path d="M0,26 C20,24 30,12 50,14 C70,16 80,8 100,10 C120,12 135,4 160,8 C180,11 190,9 200,10" fill="none" stroke="var(--accent-line)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="card metric">
+        <div class="label">Upload</div>
+        <div><span class="val tnum">12.6</span><span class="unit">MB/s</span></div>
+        <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+          <path d="M0,28 C25,27 35,24 55,25 C80,26 95,18 120,22 C150,26 175,20 200,23" fill="none" stroke="var(--good)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="card metric">
+        <div class="label">Ping · Cloudflare</div>
+        <div><span class="val tnum">11</span><span class="unit">ms</span></div>
+        <div class="row" style="margin-top:14px;gap:6px">
+          <span class="pill good">stable</span><span class="gauge-sub">jitter 1.4 ms</span>
+        </div>
+      </div>
+
+      <!-- BANDWIDTH DONUT -->
+      <div class="card">
+        <h3>Bandwidth share</h3>
+        <div class="row" style="gap:18px">
+          <svg width="118" height="118" viewBox="0 0 118 118">
+            <circle cx="59" cy="59" r="46" fill="none" stroke="var(--s2)" stroke-width="13"/>
+            <!-- segments -->
+            <circle cx="59" cy="59" r="46" fill="none" stroke="#2D9CFF" stroke-width="13" stroke-dasharray="130 159" stroke-dashoffset="0" transform="rotate(-90 59 59)" stroke-linecap="round"/>
+            <circle cx="59" cy="59" r="46" fill="none" stroke="#6FD0FF" stroke-width="13" stroke-dasharray="70 219" stroke-dashoffset="-132" transform="rotate(-90 59 59)" stroke-linecap="round"/>
+            <circle cx="59" cy="59" r="46" fill="none" stroke="#9b8cff" stroke-width="13" stroke-dasharray="44 245" stroke-dashoffset="-204" transform="rotate(-90 59 59)" stroke-linecap="round"/>
+            <circle cx="59" cy="59" r="46" fill="none" stroke="#3a4654" stroke-width="13" stroke-dasharray="30 259" stroke-dashoffset="-250" transform="rotate(-90 59 59)" stroke-linecap="round"/>
+            <text x="59" y="55" text-anchor="middle" fill="var(--tx)" font-size="21" font-weight="600" class="tnum">96.8</text>
+            <text x="59" y="71" text-anchor="middle" fill="var(--tx2)" font-size="10">MB/s total</text>
+          </svg>
+          <div class="legend" style="flex:1">
+            <div class="li"><span class="sw" style="background:#2D9CFF"></span><span class="nm">Steam</span><span class="vv tnum">43.1</span></div>
+            <div class="li"><span class="sw" style="background:#6FD0FF"></span><span class="nm">Chrome</span><span class="vv tnum">23.4</span></div>
+            <div class="li"><span class="sw" style="background:#9b8cff"></span><span class="nm">OneDrive</span><span class="vv tnum">14.7</span></div>
+            <div class="li"><span class="sw" style="background:#3a4654"></span><span class="nm">Other (11)</span><span class="vv tnum">15.6</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.7fr 1fr;margin-top:14px">
+      <!-- main timeline (mirrored area) -->
+      <div class="card">
+        <h3>Throughput <span class="pill good">last 60s</span></h3>
+        <svg width="100%" height="200" viewBox="0 0 560 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="dl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent-line)" stop-opacity=".30"/><stop offset="1" stop-color="var(--accent-line)" stop-opacity="0"/></linearGradient>
+          </defs>
+          <!-- gridlines -->
+          <g stroke="var(--border)" stroke-width="1">
+            <line x1="0" y1="50" x2="560" y2="50"/><line x1="0" y1="100" x2="560" y2="100"/><line x1="0" y1="150" x2="560" y2="150"/>
+          </g>
+          <!-- download area (top) -->
+          <path d="M0,80 C40,72 70,50 110,55 C150,60 175,30 220,38 C270,46 300,22 350,30 C400,38 430,28 470,34 C510,40 540,36 560,38 L560,100 L0,100Z" fill="url(#dl)"/>
+          <path d="M0,80 C40,72 70,50 110,55 C150,60 175,30 220,38 C270,46 300,22 350,30 C400,38 430,28 470,34 C510,40 540,36 560,38" fill="none" stroke="var(--accent-line)" stroke-width="2.2"/>
+          <!-- upload area (mirrored, below axis at y=100) -->
+          <path d="M0,118 C50,120 90,128 140,124 C200,119 240,134 300,128 C360,122 410,132 470,127 C520,123 545,126 560,125 L560,100 L0,100Z" fill="rgba(62,207,142,.14)"/>
+          <path d="M0,118 C50,120 90,128 140,124 C200,119 240,134 300,128 C360,122 410,132 470,127 C520,123 545,126 560,125" fill="none" stroke="var(--good)" stroke-width="1.8"/>
+          <text x="6" y="14" fill="var(--tx3)" font-size="10">▲ download</text>
+          <text x="6" y="196" fill="var(--tx3)" font-size="10">▼ upload</text>
+        </svg>
+      </div>
+
+      <!-- top talkers -->
+      <div class="card">
+        <h3>Top talkers</h3>
+        <table>
+          <thead><tr><th>App</th><th>Down</th><th>Up</th></tr></thead>
+          <tbody>
+            <tr><td><div class="app"><span class="ico" style="background:#1b6dc1">S</span>Steam</div></td><td class="tnum">43.1</td><td class="tnum">0.4</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#d9534f">C</span>Chrome</div></td><td class="tnum">23.4</td><td class="tnum">2.1</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#2a7">O</span>OneDrive</div></td><td class="tnum">14.7</td><td class="tnum">8.9</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#7a5">D</span>Discord</div></td><td class="tnum">3.2</td><td class="tnum">0.6</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#555">·</span>svchost</div></td><td class="tnum">1.1</td><td class="tnum">0.2</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ HARDWARE DASHBOARD ============ -->
+  <main id="hw-main" class="hidden">
+    <div class="page-head">
+      <h1>Hardware</h1><div class="sub">Diagnostic view · not recording · all sensors nominal</div>
+    </div>
+
+    <!-- GAUGES -->
+    <div class="card">
+      <h3>System health <span class="pill warn">GPU warm</span></h3>
+      <div class="gauges">
+        <!-- CPU -->
+        <div class="gauge-wrap">
+          <svg width="132" height="118" viewBox="0 0 132 118">
+            <!-- 270deg track -->
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--s2)" stroke-width="11" stroke-dasharray="235.6 78.5" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <!-- value ~63% of 235.6 -->
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--good)" stroke-width="11" stroke-dasharray="148 470" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <text x="66" y="58" text-anchor="middle" fill="var(--tx)" font-size="27" font-weight="600" class="tnum">64<tspan font-size="14" fill="var(--tx2)">°C</tspan></text>
+            <text x="66" y="76" text-anchor="middle" fill="var(--tx2)" font-size="11">load 38%</text>
+          </svg>
+          <div class="gauge-name">CPU · Ryzen 7</div>
+        </div>
+        <!-- GPU -->
+        <div class="gauge-wrap">
+          <svg width="132" height="118" viewBox="0 0 132 118">
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--s2)" stroke-width="11" stroke-dasharray="235.6 78.5" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--warn)" stroke-width="11" stroke-dasharray="196 470" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <text x="66" y="58" text-anchor="middle" fill="var(--tx)" font-size="27" font-weight="600" class="tnum">81<tspan font-size="14" fill="var(--tx2)">°C</tspan></text>
+            <text x="66" y="76" text-anchor="middle" fill="var(--tx2)" font-size="11">load 97%</text>
+          </svg>
+          <div class="gauge-name">GPU · RTX 4070</div>
+        </div>
+        <!-- RAM -->
+        <div class="gauge-wrap">
+          <svg width="132" height="118" viewBox="0 0 132 118">
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--s2)" stroke-width="11" stroke-dasharray="235.6 78.5" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <circle cx="66" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="11" stroke-dasharray="130 470" transform="rotate(135 66 60)" stroke-linecap="round"/>
+            <text x="66" y="58" text-anchor="middle" fill="var(--tx)" font-size="27" font-weight="600" class="tnum">21<tspan font-size="13" fill="var(--tx2)">/32</tspan></text>
+            <text x="66" y="76" text-anchor="middle" fill="var(--tx2)" font-size="11">GB · 66%</text>
+          </svg>
+          <div class="gauge-name">Memory</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.7fr 1fr;margin-top:14px">
+      <!-- TEMP TIMELINE (overlaid CPU+GPU on shared axis, WiFiman pattern) -->
+      <div class="card">
+        <h3>Temperature timeline <span class="pill warn">GPU peak 84°C · 3m ago</span></h3>
+        <svg width="100%" height="210" viewBox="0 0 560 210" preserveAspectRatio="none">
+          <g stroke="var(--border)" stroke-width="1">
+            <line x1="0" y1="40" x2="560" y2="40"/><line x1="0" y1="90" x2="560" y2="90"/><line x1="0" y1="140" x2="560" y2="140"/><line x1="0" y1="190" x2="560" y2="190"/>
+          </g>
+          <text x="4" y="38" fill="var(--tx3)" font-size="9">90°</text>
+          <text x="4" y="88" fill="var(--tx3)" font-size="9">70°</text>
+          <text x="4" y="138" fill="var(--tx3)" font-size="9">50°</text>
+          <!-- app activity band -->
+          <rect x="300" y="6" width="170" height="14" rx="3" fill="rgba(255,138,61,.18)"/>
+          <text x="306" y="16" fill="var(--warn)" font-size="9">▶ Cyberpunk 2077 launched</text>
+          <!-- GPU line (climbs into warm) -->
+          <path d="M0,118 C60,116 100,112 150,110 C210,107 250,100 300,96 C330,93 350,70 380,58 C410,48 440,52 470,55 C510,60 540,57 560,58" fill="none" stroke="var(--warn)" stroke-width="2.4"/>
+          <!-- CPU line (cooler, steadier) -->
+          <path d="M0,128 C70,127 120,124 180,123 C250,122 300,118 360,114 C420,111 480,113 560,112" fill="none" stroke="var(--good)" stroke-width="2.2"/>
+          <circle cx="380" cy="58" r="3.5" fill="var(--warn)"/>
+        </svg>
+        <div class="row" style="gap:18px;margin-top:8px;font-size:12px">
+          <span class="row" style="gap:6px"><span class="sw" style="width:14px;height:3px;border-radius:2px;background:var(--warn)"></span>GPU 81°C</span>
+          <span class="row" style="gap:6px"><span class="sw" style="width:14px;height:3px;border-radius:2px;background:var(--good)"></span>CPU 64°C</span>
+        </div>
+      </div>
+
+      <!-- component cards / culprits -->
+      <div class="card">
+        <h3>Load vs heat — culprits</h3>
+        <table>
+          <thead><tr><th>App</th><th>GPU load</th><th>Peak</th></tr></thead>
+          <tbody>
+            <tr><td><div class="app"><span class="ico" style="background:#c45">CP</span>Cyberpunk</div></td><td><div class="bar"><i style="width:96%;background:var(--crit)"></i></div></td><td class="tnum" style="color:var(--crit)">84°</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#36c">Ch</span>Chrome</div></td><td><div class="bar"><i style="width:18%;background:var(--warn)"></i></div></td><td class="tnum">62°</td></tr>
+            <tr><td><div class="app"><span class="ico" style="background:#555">id</span>Idle</div></td><td><div class="bar"><i style="width:6%;background:var(--good)"></i></div></td><td class="tnum">44°</td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:14px">
+          <div class="gauge-sub" style="margin-bottom:6px">Time in thermal zone (this hour)</div>
+          <div class="bar" style="height:14px;display:flex">
+            <i style="width:64%;background:var(--good)"></i><i style="width:27%;background:var(--warn)"></i><i style="width:9%;background:var(--crit)"></i>
+          </div>
+          <div class="row" style="justify-content:space-between;margin-top:6px;font-size:10px;color:var(--tx2)">
+            <span>cool 64%</span><span>warm 27%</span><span>hot 9%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- FLOATING HUD -->
+<div class="hud" id="hud">
+  <div class="hud-bar">
+    <span class="t" id="hud-title">Network</span>
+    <div class="hud-modes">
+      <button class="on" data-m="net" onclick="hudMode('net')">Net</button>
+      <button data-m="hw" onclick="hudMode('hw')">Temp</button>
+      <button data-m="both" onclick="hudMode('both')">Both</button>
+    </div>
+  </div>
+  <div class="hud-body" id="hud-body"></div>
+</div>
+
+<div class="floatnote">Click <b>Network ⇄ Hardware</b> in the header — accent re-skins. Try the HUD modes (<b>Net / Temp / Both</b>) bottom-right.</div>
+
+<script>
+function setDomain(d){
+  document.documentElement.setAttribute('data-domain', d);
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('active', b.dataset.on===d));
+  document.querySelectorAll('nav .dom.net').forEach(e=>e.classList.toggle('hidden', d!=='network'));
+  document.querySelectorAll('nav .dom.hw').forEach(e=>e.classList.toggle('hidden', d!=='hardware'));
+  document.getElementById('net-main').classList.toggle('hidden', d!=='network');
+  document.getElementById('hw-main').classList.toggle('hidden', d!=='hardware');
+  // HUD follows domain by default
+  hudMode(d==='hardware'?'hw':'net');
+  document.querySelectorAll('.hud-modes button').forEach(b=>b.classList.toggle('on', b.dataset.m===(d==='hardware'?'hw':'net')));
+}
+
+const HUD={
+  net:`<svg width="100%" height="64" viewBox="0 0 236 64" preserveAspectRatio="none">
+      <defs><linearGradient id="hn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent-line)" stop-opacity=".4"/><stop offset="1" stop-color="var(--accent-line)" stop-opacity="0"/></linearGradient></defs>
+      <path d="M0,44 C40,40 60,20 100,26 C140,32 160,14 200,22 C220,26 230,24 236,25 L236,64 L0,64Z" fill="url(#hn)"/>
+      <path d="M0,44 C40,40 60,20 100,26 C140,32 160,14 200,22 C220,26 230,24 236,25" fill="none" stroke="var(--accent-line)" stroke-width="2"/>
+      <path d="M0,54 C60,55 120,58 180,55 C210,53 226,54 236,54" fill="none" stroke="var(--good)" stroke-width="1.5"/>
+    </svg>
+    <div class="hud-read"><span style="color:var(--accent)">▲ 84.2 MB/s</span><span style="color:var(--good)">▼ 12.6</span></div>`,
+  hw:`<svg width="100%" height="64" viewBox="0 0 236 64" preserveAspectRatio="none">
+      <path d="M0,40 C40,38 70,30 110,24 C140,19 160,12 190,16 C212,19 226,18 236,18" fill="none" stroke="var(--warn)" stroke-width="2.2"/>
+      <path d="M0,50 C70,49 130,47 190,46 C214,45 228,46 236,46" fill="none" stroke="var(--good)" stroke-width="2"/>
+    </svg>
+    <div class="hud-read"><span style="color:var(--warn)"><b>GPU 81°C</b></span><span style="color:var(--good)">CPU 64°C</span></div>`,
+  both:`<svg width="100%" height="64" viewBox="0 0 236 64" preserveAspectRatio="none">
+      <line x1="0" y1="32" x2="236" y2="32" stroke="var(--border)"/>
+      <path d="M0,20 C50,16 90,8 140,12 C180,15 210,11 236,12" fill="none" stroke="var(--accent-line)" stroke-width="1.8"/>
+      <path d="M0,52 C50,50 90,44 140,46 C190,48 220,45 236,46" fill="none" stroke="var(--warn)" stroke-width="1.8"/>
+    </svg>
+    <div class="hud-read"><span style="color:var(--accent)">▲ 84.2 net</span><span style="color:var(--warn)">GPU 81°C</span></div>`
+};
+function hudMode(m){
+  document.getElementById('hud-body').innerHTML=HUD[m];
+  document.getElementById('hud-title').textContent = m==='net'?'Network':m==='hw'?'Thermals':'Net + Thermals';
+  document.querySelectorAll('.hud-modes button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+}
+hudMode('net');
+</script>
+</body>
+</html>

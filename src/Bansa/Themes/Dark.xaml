@@ -12,12 +12,12 @@
         Numeric data stays in Roboto Mono for the instrument-readout feel.
     -->
 
-    <!-- ── Surface hierarchy: neutral charcoal, not blue-black ─────────── -->
-    <Color x:Key="BgColor">#0B0C11</Color>          <!-- near-black charcoal window base   -->
-    <Color x:Key="PanelColor">#131419</Color>        <!-- sidebar / card resting surface    -->
-    <Color x:Key="PanelAltColor">#191A23</Color>     <!-- inputs / further-elevated surface -->
-    <Color x:Key="HoverColor">#1F2030</Color>        <!-- hover state                       -->
-    <Color x:Key="PressColor">#262840</Color>        <!-- pressed / active highlight        -->
+    <!-- ── Surface hierarchy: mockup tokens (cool slate greys) ─────────── -->
+    <Color x:Key="BgColor">#0B0F14</Color>          <!-- base window canvas                -->
+    <Color x:Key="PanelColor">#141A22</Color>        <!-- surface/1 — sidebar / card        -->
+    <Color x:Key="PanelAltColor">#1C2530</Color>     <!-- surface/2 — inputs / elevated     -->
+    <Color x:Key="HoverColor">#222C38</Color>        <!-- hover state                       -->
+    <Color x:Key="PressColor">#26313D</Color>        <!-- surface/3 — pressed / menus       -->
 
     <!-- ── Accent: electric cyan (primary) + indigo (gradient terminus) ── -->
     <Color x:Key="AccentColor">#00C8F0</Color>
@@ -29,13 +29,13 @@
     <Color x:Key="SuccessColor">#10B981</Color>      <!-- emerald-500                       -->
     <Color x:Key="WarningColor">#F59E0B</Color>      <!-- amber-500                         -->
 
-    <!-- ── Typography: high contrast, neutral (no blue tint) ───────────── -->
-    <Color x:Key="TextColor">#EEF1F8</Color>         <!-- bright near-white                 -->
-    <Color x:Key="SubtleTextColor">#909AAE</Color>   <!-- medium-contrast labels            -->
-    <Color x:Key="MutedTextColor">#545D72</Color>    <!-- low-contrast hints                -->
+    <!-- ── Typography: mockup tokens ───────────────────────────────────── -->
+    <Color x:Key="TextColor">#E8EDF2</Color>         <!-- text/primary                      -->
+    <Color x:Key="SubtleTextColor">#9AA7B4</Color>   <!-- text/secondary — labels, info     -->
+    <Color x:Key="MutedTextColor">#6B7886</Color>    <!-- text/tertiary — hints             -->
 
-    <!-- ── Border: visible hairline ─────────────────────────────────────── -->
-    <Color x:Key="BorderColor">#252736</Color>
+    <!-- ── Border: subtle hairline ──────────────────────────────────────── -->
+    <Color x:Key="BorderColor">#2A3440</Color>
 
     <!-- ── Chart defaults (semantic, unchanged) ──────────────────────────── -->
     <Color x:Key="ChartDownColor">#00C8F0</Color>
@@ -48,6 +48,7 @@
     <SolidColorBrush x:Key="HoverBrush"       Color="{StaticResource HoverColor}" />
     <SolidColorBrush x:Key="AccentBrush"      Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="#6FE0FF" /><!-- overridden per-domain by DomainManager -->
     <SolidColorBrush x:Key="DangerBrush"      Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="SuccessBrush"     Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="WarningBrush"     Color="{StaticResource WarningColor}" />
@@ -87,16 +88,6 @@
     <LinearGradientBrush x:Key="HeroUpRuleBrush" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="{StaticResource ChartUpColor}" Offset="0" />
         <GradientStop Color="#00000000"                     Offset="1" />
-    </LinearGradientBrush>
-
-    <!-- Hero card ambient backgrounds — subtle metric-tinted diagonal fill -->
-    <LinearGradientBrush x:Key="HeroDownCardBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#0C1E28" Offset="0" />
-        <GradientStop Color="#071318" Offset="1" />
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="HeroUpCardBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#221507" Offset="0" />
-        <GradientStop Color="#150D04" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Active nav: subtle cyan-tinted surface -->

@@ -1,8 +1,14 @@
 # Bansa
 
-A non-intrusive, fully-reversible per-app bandwidth monitor and throttle for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
+A non-intrusive, fully-reversible per-app bandwidth **and hardware** monitor for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
 
-> **Status:** v1.0 — personal use, no commercial intent.
+> **Status:** v1.1 — personal use, no commercial intent.
+
+**New in v1.1 — dual-domain redesign.** A header toggle switches Bansa between two purposes, re-skinning the whole accent:
+> - **Network** — live throughput, per-app traffic, limits & scenarios.
+> - **Hardware** — CPU/GPU thermal gauges, an overlaid temperature timeline, and recordable monitoring sessions (great for diagnosing a friend's PC).
+>
+> Plus a UniFi-style mirrored throughput chart on the dashboard, a redesigned floating HUD (Net / Temp / Both), and a split History (Network vs Hardware).
 
 ---
 
@@ -27,6 +33,7 @@ Bansa\
 %LocalAppData%\Bansa\
 ├── settings.json      ← all preferences (export/import via Settings → General)
 ├── bansa.db           ← bandwidth history (SQLite)
+├── sessions\          ← recorded hardware-monitoring sessions (one JSON per session)
 └── crash.log          ← written only on unhandled exceptions
 ```
 
@@ -48,15 +55,17 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Per-app download rate, upload rate, total bytes, active connection count.
 - Tray icon with live ↓/↑ rates and a ping indicator. Left-click to toggle the popup; double-click to open the main window. Popup position is remembered when dragged.
 - Continuous ping to a configurable target displayed in the sidebar.
-- Hardware panel — live CPU / GPU / RAM usage, temperatures, clocks, VRAM.
-- Floating graph window — detachable, always-on-top overlay with network rates and hardware stats. Drag via the rates bar; right-click for options. Position is always remembered between sessions and safely clamped to the visible screen on different machines.
+- Sidebar STATUS cluster — live CPU/GPU temperature donuts, download/upload totals, ping, and Scenarios / Global Cap toggles. Each box is clickable and jumps to the matching tab.
+- **Hardware dashboard** — CPU/GPU/RAM radial thermal gauges plus an overlaid CPU/GPU temperature timeline (smoothed, gradient-filled) with hover crosshair.
+- **Network dashboard** — Download / Upload / Ping hero, a UniFi-style mirrored throughput timeline (download above the axis, upload below), a per-app bandwidth-share donut, and a live top-talkers list.
+- **Floating HUD** — detachable, always-on-top overlay with three tabs (**Net / Temp / Both**): network sparkline + ping + top apps, CPU/GPU temp gauges + timeline, and RAM. Drag via the rates bar or the bottom switch; right-click for options. Position is remembered and safely clamped to the visible screen on different machines.
 
 **Filtering**
 - Filter by app name.
 - Threshold to hide apps below a rate (1 KB/s, 10 KB/s, 50 KB/s, or custom).
 - Hide local-only apps (loopback/LAN traffic).
 
-**Network tab chart**
+**Live Traffic chart**
 - 30-second live sparkline with smooth Catmull-Rom curves.
 - Click to pause/resume; click again to snap back to live.
 - Drag right to scroll back through up to **1 hour of history**; label shows how far back you're looking.
@@ -71,31 +80,33 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 **Scenarios**
 - A saved set of **per-app** upload/download limits that toggle on and off together with one click (sidebar card or Dashboard card).
 - Intended to throttle background apps (Spotify, Discord, cloud sync) so they don't compete with your game. Apps not listed are unaffected.
-- When you turn it off, each app's previous (pre-Scenario) limit is restored. Configure the per-app entries in **Settings → Scenarios**.
+- When you turn it off, each app's previous (pre-Scenario) limit is restored. Configure the per-app entries in the **Limits & Scenarios** tab.
 
 **Global Upload Cap**
 - A separate, system-wide outbound cap — keeps bufferbloat from degrading latency while uploading.
-- **Two enforcement layers:** QoS Group Policy (zero-overhead, handles new connections) + pulsed firewall rules (catches existing connections, UDP traffic, and anything QoS misses). Set it from the Network tab.
+- **Two enforcement layers:** QoS Group Policy (zero-overhead, handles new connections) + pulsed firewall rules (catches existing connections, UDP traffic, and anything QoS misses). Set it from the **Limits & Scenarios** tab (the sidebar Global Cap button jumps there to set a value).
 - An **enable/disable switch** pauses the cap without discarding the configured value, so you can drop it for a big upload and switch it back on afterward.
 - Optionally **keep the cap active when Bansa is closed** — leaves the smooth QoS layer in place so the cap persists across reboots without the app running. (The firewall hard layer still needs the app open.) It's the one thing Bansa intentionally leaves behind; turning the cap off, the **Clean Up** button, or `Uninstall-Bansa.ps1` removes it.
 
-**History tab**
-- Total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom).
-- Activity log — timestamped record of every block, limit, and priority change.
-- Export to CSV.
+**History tab** (domain-aware — shows Network history in Network mode, Hardware history in Hardware mode)
+- *Network* — total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom); activity log of every block, limit, and priority change; export to CSV.
+- *Hardware* — **record a monitoring session** to log CPU/GPU temperatures and loads, each tagged with the foreground app so a thermal spike can be traced to the game/app that caused it. Sessions **auto-save and persist** across restarts (a picker lists past sessions), with min/avg/max + peak-with-culprit summary, a "hottest apps" list, and CSV export.
 
 **Tools tab**
 - Browse and launch portable utilities: OpenRGB, HWiNFO, ShareX, Chris Titus WinUtil, FanControl, DDU — all with real brand logos.
 - Tools stored as portables in `Data\Tools\`; click the directory link to open the folder directly.
 - Website button opens the download page when a tool isn't installed yet.
 
-**Settings**
-Four tabs — *General · Network · Scenarios · Appearance*:
+**Limits & Scenarios tab**
+- **Apps with limits** — every app that currently has an up/down limit, with inline **Edit** / **Clear** (no need to find it in the live list first).
+- **Limit profiles**, **Global Upload Cap**, **Ping Monitor**, and the **Scenario editor** all live here in one place.
+
+**Settings** (opened from the header gear)
+Three tabs — *General · Network · Appearance*:
 
 - *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup.
-- *Network* — limit profiles (add / edit / delete / quick-apply), global upload cap, ISP connection speed, ping monitor targets.
-- *Scenarios* — per-app upload/download limits applied together when Scenarios is toggled on.
-- *Appearance* — dark/light theme, Windows accent color; separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
+- *Network* — ISP connection speed and related network preferences.
+- *Appearance* — dark/light theme; **per-domain accent color** (Network / Hardware); separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
 
 ---
 
