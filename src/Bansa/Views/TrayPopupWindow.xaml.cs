@@ -27,7 +27,13 @@ public partial class TrayPopupWindow : Window
     private long _dayDown, _dayUp;
     private bool _isFading;
     private bool _clickThrough;
-    private bool _clickThroughRestored;   // ensures saved setting is applied on first show
+    private bool _prefsRestored;   // ensures saved pin / click-through / opacity are applied on first show
+
+    // Opacity cycle steps (highest → lowest), wrapping back to the top.
+    private static readonly double[] _opacitySteps = { 1.0, 0.9, 0.8, 0.7, 0.6 };
+
+    /// <summary>Saved popup opacity, clamped to a sane visible range.</summary>
+    private double TargetOpacity => Math.Clamp(App.Settings?.TrayPopupOpacity ?? 1.0, 0.3, 1.0);
 
     // Stable list updated in-place — same hold-time pattern as FloatingGraphWindow
     private readonly ObservableCollection<AppRowViewModel> _topApps = new();
@@ -115,22 +121,29 @@ public partial class TrayPopupWindow : Window
         Opacity = 0;
         if (!IsVisible) Show();
 
-        // Apply the saved click-through preference on the first ever show.
+        // Apply saved preferences (pin / click-through / opacity) on the first ever show.
         // HWND is guaranteed to exist once Show() has been called, so Win32 work is safe here.
-        if (!_clickThroughRestored)
+        if (!_prefsRestored)
         {
-            _clickThroughRestored = true;
+            _prefsRestored = true;
+
+            bool pin = App.Settings?.TrayAlwaysOnTop ?? true;
+            Topmost = pin;
+            TrayPinBtn.IsChecked = pin;
+
             var saved = App.Settings?.TrayClickThrough ?? false;
             _clickThrough = saved;
             TrayClickThroughBtn.IsChecked = saved;
             if (saved) SetClickThrough(true);
+
+            UpdateOpacityLabel();
         }
 
         // Refresh hardware bars now that layout is measured (ActualWidth is valid)
         if (HardwareMonitor.Instance is { Latest: var snap } && snap != HardwareSnapshot.Empty)
             UpdateTrayHardware(snap);
 
-        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140));
+        var fadeIn = new DoubleAnimation(0, TargetOpacity, TimeSpan.FromMilliseconds(140));
         BeginAnimation(OpacityProperty, fadeIn);
     }
 
@@ -141,7 +154,7 @@ public partial class TrayPopupWindow : Window
         {
             _isFading = false;
             BeginAnimation(OpacityProperty, null);
-            Opacity = 1;
+            Opacity = TargetOpacity;
         }
     }
 
@@ -407,12 +420,8 @@ public partial class TrayPopupWindow : Window
             (byte)(a.R + (b.R - a.R) * t),
             (byte)(a.G + (b.G - a.G) * t),
             (byte)(a.B + (b.B - a.B) * t));
-    private static Color TempHeatColor(double tempC)
-    {
-        var cold = ParseHex2(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
-        var hot  = ParseHex2(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
-        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
-    }
+    // Cool (user-set "blue") → bright yellow → bright red. See Services/HeatColors.
+    private static Color TempHeatColor(double tempC) => HeatColors.Temp(tempC);
     private static Color PingHeatColor(int ms)
     {
         var good = ParseHex2(App.Settings?.PingGoodColorHex, Color.FromRgb(0x10, 0xB9, 0x81));
@@ -479,19 +488,58 @@ public partial class TrayPopupWindow : Window
     public bool IsAlwaysOnTop
     {
         get => Topmost;
-        set { Topmost = value; TrayPinBtn.IsChecked = value; }
+        set
+        {
+            Topmost = value;
+            TrayPinBtn.IsChecked = value;
+            if (App.Settings is not null)
+            {
+                App.Settings.TrayAlwaysOnTop = value;
+                SettingsManager.Save(App.Settings);
+            }
+        }
     }
     public bool IsClickThrough => _clickThrough;
 
     private void OnTrayPinClick(object sender, RoutedEventArgs e)
     {
-        Topmost = TrayPinBtn.IsChecked == true;
+        bool pin = TrayPinBtn.IsChecked == true;
+        Topmost = pin;
+        if (App.Settings is not null)
+        {
+            App.Settings.TrayAlwaysOnTop = pin;
+            SettingsManager.Save(App.Settings);
+        }
     }
 
     private void OnTrayClickThroughClick(object sender, RoutedEventArgs e)
     {
         SetClickThrough(TrayClickThroughBtn.IsChecked == true);
     }
+
+    /// <summary>Cycle the popup opacity through the preset steps, persisting and applying it live.</summary>
+    private void OnTrayOpacityClick(object sender, RoutedEventArgs e)
+    {
+        // Find the current step and advance to the next (wrapping back to fully opaque).
+        double cur = TargetOpacity;
+        int idx = Array.FindIndex(_opacitySteps, v => Math.Abs(v - cur) < 0.001);
+        double next = _opacitySteps[(idx + 1) % _opacitySteps.Length];
+
+        if (App.Settings is not null)
+        {
+            App.Settings.TrayPopupOpacity = next;
+            SettingsManager.Save(App.Settings);
+        }
+
+        UpdateOpacityLabel();
+
+        // Apply immediately (the popup is visible while the user clicks this).
+        BeginAnimation(OpacityProperty, null);
+        Opacity = next;
+    }
+
+    private void UpdateOpacityLabel()
+        => TrayOpacityLabel.Text = $"{TargetOpacity * 100:0}";
 
     public void SetClickThrough(bool enable)
     {

@@ -315,11 +315,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateChartBrush("ChartUpBrush", hex);
     }
 
-    public void SetCpuColor(string hex)  { App.Settings.CpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartCpuBrush", hex); }
-    public void SetGpuColor(string hex)  { App.Settings.GpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartGpuBrush", hex); }
-    public void SetRamColor(string hex)  { App.Settings.RamColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartRamBrush", hex); }
-    public void SetTempColdColor(string hex) { App.Settings.TempColdColorHex = hex; SettingsManager.Save(App.Settings); }
-    public void SetTempHotColor(string hex)  { App.Settings.TempHotColorHex  = hex; SettingsManager.Save(App.Settings); }
+    public void SetCpuColor(string hex)  { App.Settings.CpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartCpuBrush", hex); UpdateMutedBrush("ChartCpuMutedBrush", hex); }
+    public void SetGpuColor(string hex)  { App.Settings.GpuColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartGpuBrush", hex); UpdateMutedBrush("ChartGpuMutedBrush", hex); }
+    public void SetRamColor(string hex)  { App.Settings.RamColorHex = hex; SettingsManager.Save(App.Settings); UpdateChartBrush("ChartRamBrush", hex); UpdateMutedBrush("ChartRamMutedBrush", hex); }
+    // Temperature bands (stepped). Each band has a flat color; thresholds saved separately.
+    public void SetTempCoolBand(string hex) { App.Settings.TempBandCoolColorHex = hex; SettingsManager.Save(App.Settings); }
+    public void SetTempWarmBand(string hex) { App.Settings.TempBandWarmColorHex = hex; SettingsManager.Save(App.Settings); }
+    public void SetTempHotBand(string hex)  { App.Settings.TempBandHotColorHex  = hex; SettingsManager.Save(App.Settings); }
     public void SetPingGoodColor(string hex) { App.Settings.PingGoodColorHex = hex; SettingsManager.Save(App.Settings); }
     public void SetPingBadColor(string hex)  { App.Settings.PingBadColorHex  = hex; SettingsManager.Save(App.Settings); }
 
@@ -331,6 +333,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var c = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
                 var brush = new System.Windows.Media.SolidColorBrush(c);
+                if (brush.CanFreeze) brush.Freeze();
+                Application.Current.Resources[resourceKey] = brush;
+            }
+            catch { }
+        });
+    }
+
+    /// <summary>Updates a low-alpha tint resource (for icon tile backgrounds) from a hex color.</summary>
+    private static void UpdateMutedBrush(string resourceKey, string hex, byte alpha = 0x20)
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            try
+            {
+                var c = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+                var brush = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(alpha, c.R, c.G, c.B));
                 if (brush.CanFreeze) brush.Freeze();
                 Application.Current.Resources[resourceKey] = brush;
             }

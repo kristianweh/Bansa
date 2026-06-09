@@ -61,6 +61,11 @@
     <SolidColorBrush x:Key="ChartCpuBrush"    Color="#5DADE2" />
     <SolidColorBrush x:Key="ChartGpuBrush"    Color="#FF8832" />
     <SolidColorBrush x:Key="ChartRamBrush"    Color="#10B981" />
+    <!-- Low-alpha tints of the chart colors — used for icon tile backgrounds. Kept in sync
+         with the chart brushes at runtime by SetCpu/Gpu/RamColor (see MainViewModel). -->
+    <SolidColorBrush x:Key="ChartCpuMutedBrush" Color="#205DADE2" />
+    <SolidColorBrush x:Key="ChartGpuMutedBrush" Color="#20FF8832" />
+    <SolidColorBrush x:Key="ChartRamMutedBrush" Color="#2010B981" />
 
     <!-- ── Gradient brushes ──────────────────────────────────────────────── -->
     <!-- Pre-defined as resources so ControlTemplates and Styles can reference them

@@ -46,9 +46,17 @@ public class BansaSettings
     public string CpuColorHex { get; set; } = "#5DADE2";
     public string GpuColorHex { get; set; } = "#FF8832";
     public string RamColorHex { get; set; } = "#10B981";
-    // Temperature gradient endpoints (cold → hot)
+    // Temperature gradient endpoints (cold → hot) — legacy, kept for JSON back-compat (unused).
     public string TempColdColorHex { get; set; } = "#70C8FF";
     public string TempHotColorHex  { get; set; } = "#FF8080";
+    // ── Temperature color bands (stepped — no blending) ───────────────────────
+    // Two thresholds split the range into 3 bands; each band has its own flat color.
+    // cool: < warm°C · warm: warm…hot°C · hot: ≥ hot°C
+    public int    TempWarmThresholdC   { get; set; } = 60;
+    public int    TempHotThresholdC    { get; set; } = 80;
+    public string TempBandCoolColorHex { get; set; } = "#36BFFA";
+    public string TempBandWarmColorHex { get; set; } = "#FFD60A";
+    public string TempBandHotColorHex  { get; set; } = "#FF3B30";
     // Ping gradient endpoints (good → bad)
     public string PingGoodColorHex { get; set; } = "#10B981";
     public string PingBadColorHex  { get; set; } = "#F43F5E";
@@ -137,6 +145,10 @@ public class BansaSettings
     // ── Tray hover popup ──────────────────────────────────────────────────────
     /// <summary>When true, the tray hover popup passes mouse events to windows underneath.</summary>
     public bool TrayClickThrough { get; set; } = false;
+    /// <summary>When true, the tray hover popup stays above other windows (pin toggle).</summary>
+    public bool TrayAlwaysOnTop { get; set; } = true;
+    /// <summary>Tray hover popup opacity (0.3–1.0). 1.0 = fully opaque.</summary>
+    public double TrayPopupOpacity { get; set; } = 1.0;
 
     // ── Main window bounds ────────────────────────────────────────────────────
     public double MainWindowX         { get; set; } = -1;

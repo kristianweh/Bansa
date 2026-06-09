@@ -406,7 +406,7 @@
                                 CornerRadius="2" Height="3" VerticalAlignment="Center" Margin="0,0,8,0">
                             <Border x:Name="RamBarFill" CornerRadius="2"
                                     HorizontalAlignment="Left" Height="3" Width="0"
-                                    Background="{DynamicResource SuccessBrush}" />
+                                    Background="{DynamicResource ChartRamBrush}" />
                         </Border>
                         <TextBlock x:Name="RamStatsText" Grid.Column="2" FontSize="10"
                                    Foreground="{DynamicResource SubtleTextBrush}" VerticalAlignment="Center" />

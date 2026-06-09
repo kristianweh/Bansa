@@ -44,6 +44,35 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Compact icon action button (no checked state) — used for the opacity cycle -->
+        <Style x:Key="TrayIconBtn" TargetType="Button">
+            <Setter Property="Background"      Value="Transparent" />
+            <Setter Property="Foreground"      Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding"         Value="0" />
+            <Setter Property="Cursor"          Value="Hand" />
+            <Setter Property="FontFamily"      Value="{StaticResource RobotoMonoFamily}" />
+            <Setter Property="FontSize"        Value="9" />
+            <Setter Property="FontWeight"      Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                Width="{TemplateBinding Width}" Height="{TemplateBinding Height}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- Outer container — Carbon palette: CornerRadius 14, stronger shadow -->
@@ -129,12 +158,19 @@
                     </ToggleButton>
                     <ToggleButton x:Name="TrayClickThroughBtn"
                                   Style="{StaticResource TrayIconToggle}"
-                                  Width="26" Height="26"
+                                  Width="26" Height="26" Margin="0,0,0,3"
                                   IsChecked="False"
                                   ToolTip="Click-through — mouse events pass to windows below"
                                   Click="OnTrayClickThroughClick">
                         <TextBlock Text="&#xE748;" />
                     </ToggleButton>
+                    <Button x:Name="TrayOpacityBtn"
+                            Style="{StaticResource TrayIconBtn}"
+                            Width="26" Height="26"
+                            ToolTip="Popup opacity — click to cycle"
+                            Click="OnTrayOpacityClick">
+                        <TextBlock x:Name="TrayOpacityLabel" Text="100" />
+                    </Button>
                 </StackPanel>
             </Grid>
 
@@ -222,7 +258,7 @@
                             <TextBlock x:Name="TrayHwCpuPct" Grid.Column="2"
                                        Text="—" FontSize="11" FontWeight="Bold"
                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                       Foreground="{DynamicResource AccentBrush}" Padding="0,2" />
+                                       Foreground="{DynamicResource ChartCpuBrush}" Padding="0,2" />
                         </Grid>
                         <Border x:Name="TrayHwCpuBarBg" Background="{DynamicResource BgBrush}"
                                 CornerRadius="2" Height="3" Margin="0,4,0,3">
@@ -276,13 +312,13 @@
                             <TextBlock x:Name="TrayHwRamPct" Grid.Column="2"
                                        Text="—" FontSize="11" FontWeight="Bold"
                                        FontFamily="{StaticResource RobotoMonoFamily}"
-                                       Foreground="{DynamicResource SuccessBrush}" Padding="0,2" />
+                                       Foreground="{DynamicResource ChartRamBrush}" Padding="0,2" />
                         </Grid>
                         <Border x:Name="TrayHwRamBarBg" Background="{DynamicResource BgBrush}"
                                 CornerRadius="2" Height="3" Margin="0,4,0,3">
                             <Border x:Name="TrayHwRamBarFill" CornerRadius="2"
                                     HorizontalAlignment="Left" Height="3" Width="0"
-                                    Background="{DynamicResource SuccessBrush}" />
+                                    Background="{DynamicResource ChartRamBrush}" />
                         </Border>
                         <TextBlock x:Name="TrayHwRamDetail" Text="" FontSize="9"
                                    Foreground="{DynamicResource SubtleTextBrush}" />

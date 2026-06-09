@@ -268,12 +268,8 @@ public partial class FloatingGraphWindow : Window
         var bad  = ParseHex(App.Settings?.PingBadColorHex,  Color.FromRgb(0xF4, 0x3F, 0x5E));
         return LerpColor(good, bad, Math.Clamp((ms - 40.0) / 80.0, 0, 1));
     }
-    private static Color TempHeatColor(double tempC)
-    {
-        var cold = ParseHex(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
-        var hot  = ParseHex(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
-        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
-    }
+    // Cool (user-set "blue") → bright yellow → bright red. See Services/HeatColors.
+    private static Color TempHeatColor(double tempC) => HeatColors.Temp(tempC);
 
     // ── Ping ──────────────────────────────────────────────────────────────────
 
@@ -472,25 +468,28 @@ public partial class FloatingGraphWindow : Window
 
         if (HwSection.Visibility != Visibility.Visible) return;
 
+        // Gauge ring uses each component's assigned color (matches the Hardware tab); the
+        // value text stays thermal-heat-colored so temperature still reads hot/cold at a glance.
+        var cpuRing = ChartColorOf("ChartCpuBrush", Color.FromRgb(0x5D, 0xAD, 0xE2));
+        var gpuRing = ChartColorOf("ChartGpuBrush", Color.FromRgb(0xFF, 0x88, 0x32));
+
         // ── CPU gauge ──────────────────────────────────────────────────────────
         if (snap.CpuTemp > 0)
         {
-            var c = TempHeatColor(snap.CpuTemp);
             CpuTempFloat.Text = $"{snap.CpuTemp:0}°";
-            CpuTempFloat.Foreground = new SolidColorBrush(c);
+            CpuTempFloat.Foreground = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
             CpuLoadFloat.Text = $"load {snap.CpuLoad:0}%";
-            DrawFloatGauge(CpuGaugeFloat, snap.CpuTemp, 30, 95, c);
+            DrawFloatGauge(CpuGaugeFloat, snap.CpuTemp, 30, 95, cpuRing);
         }
         else { CpuTempFloat.Text = "—"; CpuLoadFloat.Text = "load —%"; DrawFloatGauge(CpuGaugeFloat, 0, 30, 95, default); }
 
         // ── GPU gauge ──────────────────────────────────────────────────────────
         if (snap.GpuTemp > 0)
         {
-            var c = TempHeatColor(snap.GpuTemp);
             GpuTempFloat.Text = $"{snap.GpuTemp:0}°";
-            GpuTempFloat.Foreground = new SolidColorBrush(c);
+            GpuTempFloat.Foreground = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
             GpuLoadFloat.Text = $"load {snap.GpuLoad:0}%";
-            DrawFloatGauge(GpuGaugeFloat, snap.GpuTemp, 30, 95, c);
+            DrawFloatGauge(GpuGaugeFloat, snap.GpuTemp, 30, 95, gpuRing);
         }
         else { GpuTempFloat.Text = "—"; GpuLoadFloat.Text = "load —%"; DrawFloatGauge(GpuGaugeFloat, 0, 30, 95, default); }
 

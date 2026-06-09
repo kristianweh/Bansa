@@ -1795,18 +1795,42 @@
                             <!-- Gradient colors -->
                             <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Gradient Indicators" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Text="Temperature Bands" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
                                     <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,0,0,10"
-                                               TextWrapping="Wrap" Text="Start and end colors for temperature and ping heat gradients." />
-                                    <TextBlock Text="Temperature — cool" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,4,0,4" />
-                                    <ItemsControl x:Name="TempColdSwatches">
+                                               TextWrapping="Wrap" Text="Set where the warm and hot bands begin, then pick a flat color for each band. Colors switch in clean steps — no blending." />
+
+                                    <!-- Thresholds -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                                        <TextBlock Text="Warm at" VerticalAlignment="Center" FontSize="11"
+                                                   Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,6,0" />
+                                        <TextBox x:Name="TempWarmThreshBox" Width="52" TextAlignment="Center"
+                                                 LostFocus="OnTempThresholdChanged" />
+                                        <TextBlock Text="°C" VerticalAlignment="Center" FontSize="11"
+                                                   Foreground="{DynamicResource MutedTextBrush}" Margin="4,0,18,0" />
+                                        <TextBlock Text="Hot at" VerticalAlignment="Center" FontSize="11"
+                                                   Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,6,0" />
+                                        <TextBox x:Name="TempHotThreshBox" Width="52" TextAlignment="Center"
+                                                 LostFocus="OnTempThresholdChanged" />
+                                        <TextBlock Text="°C" VerticalAlignment="Center" FontSize="11"
+                                                   Foreground="{DynamicResource MutedTextBrush}" Margin="4,0,0,0" />
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="TempCoolBandLabel" Text="Cool" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,2,0,4" />
+                                    <ItemsControl x:Name="TempCoolBandSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <TextBlock Text="Temperature — hot" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
-                                    <ItemsControl x:Name="TempHotSwatches">
+                                    <TextBlock x:Name="TempWarmBandLabel" Text="Warm" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="TempWarmBandSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
-                                    <TextBlock Text="Ping — good" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <TextBlock x:Name="TempHotBandLabel" Text="Hot" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,10,0,4" />
+                                    <ItemsControl x:Name="TempHotBandSwatches">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+
+                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,12" />
+                                    <TextBlock Text="Ping Gradient" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,8" />
+                                    <TextBlock Text="Ping — good" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,0,0,4" />
                                     <ItemsControl x:Name="PingGoodSwatches">
                                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     </ItemsControl>
@@ -2129,11 +2153,11 @@
 
                                     <!-- Header -->
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
-                                        <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="10"
+                                        <Border Background="{DynamicResource ChartCpuMutedBrush}" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
                                             <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Canvas Width="24" Height="24">
-                                                    <Path Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                                                    <Path Stroke="{DynamicResource ChartCpuBrush}" StrokeThickness="2"
                                                           StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                                           Data="M5 5h14v14H5z M9 9h6v6H9z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3" />
                                                 </Canvas>
@@ -2247,7 +2271,7 @@
 
                                     <!-- Header -->
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
-                                        <Border Background="#20F39C12" CornerRadius="10"
+                                        <Border Background="{DynamicResource ChartGpuMutedBrush}" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
                                             <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Canvas Width="24" Height="24">
@@ -2310,7 +2334,7 @@
                                                        HorizontalAlignment="Right" />
                                         </Grid>
                                         <ProgressBar x:Name="GpuVramBar" Style="{StaticResource MiniProgress}"
-                                                     Foreground="#CC7733" Height="4" />
+                                                     Foreground="{DynamicResource ChartGpuBrush}" Opacity="0.7" Height="4" />
                                     </StackPanel>
 
                                     <!-- Stats row: Load only (temp is the big number above) -->
@@ -2399,7 +2423,7 @@
 
                                     <!-- Header -->
                                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
-                                        <Border Background="#203DBA6F" CornerRadius="10"
+                                        <Border Background="{DynamicResource ChartRamMutedBrush}" CornerRadius="10"
                                                 Width="30" Height="30" Margin="0,0,10,0">
                                             <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Canvas Width="24" Height="24">
@@ -2423,10 +2447,10 @@
                                                    Text="—" FontSize="42" FontWeight="Bold"
                                                    Padding="0,4"
                                                    FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource SuccessBrush}" />
+                                                   Foreground="{DynamicResource ChartRamBrush}" />
                                         <TextBlock Text="GB" FontSize="20" FontWeight="Bold"
                                                    FontFamily="{StaticResource RobotoMonoFamily}"
-                                                   Foreground="{DynamicResource SuccessBrush}"
+                                                   Foreground="{DynamicResource ChartRamBrush}"
                                                    VerticalAlignment="Bottom" Margin="4,0,0,10" />
                                     </StackPanel>
                                     <TextBlock x:Name="RamTotalText" Grid.Row="2"
@@ -2437,7 +2461,7 @@
                                     <!-- RAM usage bar -->
                                     <ProgressBar x:Name="RamUsageBar" Grid.Row="3"
                                                  Style="{StaticResource CardProgress}"
-                                                 Foreground="{DynamicResource SuccessBrush}"
+                                                 Foreground="{DynamicResource ChartRamBrush}"
                                                  Margin="0,0,0,16" />
 
                                     <!-- Stats row: Used % | Available | Speed -->

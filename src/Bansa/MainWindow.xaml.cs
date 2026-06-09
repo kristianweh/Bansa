@@ -146,14 +146,22 @@ public partial class MainWindow : Window
         "#94A3B8",
     };
 
-    // Domain-accent palettes: cool for Network, warm/thermal for Hardware (first entry = default)
-    private static readonly string[] _networkPalette =
+    // Temperature-band palette: cool blues/cyans → greens → warm yellows/oranges → reds
+    // (includes the three band defaults so the active swatch always highlights).
+    private static readonly string[] _tempPalette =
     {
-        "#00C8F0", "#2D9CFF", "#3B82F6", "#5865F2", "#06B6D4", "#10B981", "#8B5CF6",
+        "#36BFFA", "#3B82F6", "#06B6D4", "#22D3EE", "#10B981", "#A3E635",
+        "#FFD60A", "#FACC15", "#F59E0B", "#FB923C", "#FF3B30", "#EF4444",
     };
-    private static readonly string[] _hardwarePalette =
+
+    // Domain-accent palette: full cool→warm spectrum so Network and Hardware can each pick
+    // any color (not just cool / warm). Includes both domain defaults (#00C8F0 cyan,
+    // #FF8A3D thermal) so whichever is active always highlights its selected swatch.
+    private static readonly string[] _domainPalette =
     {
-        "#FF8A3D", "#F97316", "#F59E0B", "#FACC15", "#EF4444", "#FF5C5C", "#EC4899",
+        "#00C8F0", "#2D9CFF", "#3B82F6", "#5865F2", "#8B5CF6", "#EC4899",
+        "#EF4444", "#FF5C5C", "#FF8A3D", "#F97316", "#F59E0B", "#FACC15",
+        "#10B981", "#06B6D4", "#94A3B8",
     };
 
     public MainWindow()
@@ -295,12 +303,11 @@ public partial class MainWindow : Window
         PopulateSwatches(CpuColorSwatches,     App.Settings.CpuColorHex,      hex => Vm.SetCpuColor(hex));
         PopulateSwatches(GpuColorSwatches,     App.Settings.GpuColorHex,      hex => Vm.SetGpuColor(hex));
         PopulateSwatches(RamColorSwatches,     App.Settings.RamColorHex,      hex => Vm.SetRamColor(hex));
-        PopulateSwatches(TempColdSwatches,     App.Settings.TempColdColorHex, hex => Vm.SetTempColdColor(hex));
-        PopulateSwatches(TempHotSwatches,      App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
+        SetupTempBandSwatches();
         PopulateSwatches(PingGoodSwatches,     App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
         PopulateSwatches(PingBadSwatches,      App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
-        PopulateSwatches(NetworkAccentSwatches,  _networkPalette,  App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
-        PopulateSwatches(HardwareAccentSwatches, _hardwarePalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
+        PopulateSwatches(NetworkAccentSwatches,  _domainPalette, App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
+        PopulateSwatches(HardwareAccentSwatches, _domainPalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
 
         try
         {
@@ -881,21 +888,23 @@ public partial class MainWindow : Window
                     Background = ChartChrome("BorderBrush", Color.FromArgb(40, 255, 255, 255))
                 });
 
-                var accentBrush = (Brush)(Application.Current.Resources.Contains("AccentBrush")
-                    ? Application.Current.Resources["AccentBrush"]
+                // CPU / GPU / RAM labels follow their assigned hardware colors (consistent with
+                // the Hardware tab, tray popup and float HUD) — not the accent / upload / success brushes.
+                var cpuBrush = (Brush)(Application.Current.Resources.Contains("ChartCpuBrush")
+                    ? Application.Current.Resources["ChartCpuBrush"]
                     : new SolidColorBrush(Color.FromRgb(0x5D, 0xAD, 0xE2)));
-                var gpuBrush = (Brush)(Application.Current.Resources.Contains("ChartUpBrush")
-                    ? Application.Current.Resources["ChartUpBrush"]
-                    : new SolidColorBrush(Color.FromRgb(0xF3, 0x9C, 0x12)));
-                var ramBrush = (Brush)(Application.Current.Resources.Contains("SuccessBrush")
-                    ? Application.Current.Resources["SuccessBrush"]
-                    : new SolidColorBrush(Color.FromRgb(0x3D, 0xBA, 0x6F)));
+                var gpuBrush = (Brush)(Application.Current.Resources.Contains("ChartGpuBrush")
+                    ? Application.Current.Resources["ChartGpuBrush"]
+                    : new SolidColorBrush(Color.FromRgb(0xFF, 0x88, 0x32)));
+                var ramBrush = (Brush)(Application.Current.Resources.Contains("ChartRamBrush")
+                    ? Application.Current.Resources["ChartRamBrush"]
+                    : new SolidColorBrush(Color.FromRgb(0x10, 0xB9, 0x81)));
 
                 var hwRow = new StackPanel { Orientation = Orientation.Horizontal };
                 if (hw.CpuLoad > 0)
                     hwRow.Children.Add(new TextBlock
                     {
-                        Text = $"CPU {hw.CpuLoad:0}%", Foreground = accentBrush,
+                        Text = $"CPU {hw.CpuLoad:0}%", Foreground = cpuBrush,
                         FontSize = 10, FontWeight = FontWeights.SemiBold,
                         Margin = new Thickness(0, 0, 10, 0)
                     });
@@ -1720,13 +1729,8 @@ public partial class MainWindow : Window
         var bad  = ParseHex(App.Settings?.PingBadColorHex,  Color.FromRgb(0xF4, 0x3F, 0x5E));
         return LerpColor(good, bad, Math.Clamp((ms - 40.0) / 80.0, 0, 1));
     }
-    // ≤50 °C → TempColdColor, 50–90 °C → lerp, 90 °C+ → TempHotColor
-    private static Color TempHeatColor(double tempC)
-    {
-        var cold = ParseHex(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
-        var hot  = ParseHex(App.Settings?.TempHotColorHex,  Color.FromRgb(0xFF, 0x80, 0x80));
-        return LerpColor(cold, hot, Math.Clamp((tempC - 50.0) / 40.0, 0, 1));
-    }
+    // Cool (user-set "blue") → bright yellow → bright red. See Services/HeatColors.
+    private static Color TempHeatColor(double tempC) => HeatColors.Temp(tempC);
 
     private void UpdatePingColor(int pingMs)
     {
@@ -1924,7 +1928,8 @@ public partial class MainWindow : Window
                       (Application.Current.TryFindResource("ChartGpuBrush") as SolidColorBrush)?.Color
                       ?? Color.FromRgb(0xFF, 0x88, 0x32), "°");
         DrawTempChart(RamUsageChart, _ramPctBuf,  _tempBufHead, _tempBufCount,
-                      Color.FromRgb(0x3D, 0xBA, 0x6F), "%");   // SuccessBrush green
+                      (Application.Current.TryFindResource("ChartRamBrush") as SolidColorBrush)?.Color
+                      ?? Color.FromRgb(0x10, 0xB9, 0x81), "%");
 
         // Hero: thermal radial gauges + overlaid CPU/GPU temperature timeline
         RedrawHwHero(snap);
@@ -2086,25 +2091,28 @@ public partial class MainWindow : Window
 
     private void RedrawHwHero(HardwareSnapshot snap)
     {
-        // CPU — temperature gauge mapped across 30–95 °C, thermal-colored
+        // Ring fill uses each component's assigned color (consistent with RAM and the cards
+        // below); the center number stays thermal-heat-colored so temperature still reads hot/cold.
+        var cpuRing = (TryFindResource("ChartCpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x5D, 0xAD, 0xE2);
+        var gpuRing = (TryFindResource("ChartGpuBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0xFF, 0x88, 0x32);
+
+        // CPU — temperature gauge mapped across 30–95 °C
         if (snap.CpuTemp > 0)
         {
-            var c = TempHeatColor(snap.CpuTemp);
             CpuGaugeVal.Text = $"{snap.CpuTemp:0}";
-            CpuGaugeVal.Foreground = new SolidColorBrush(c);
+            CpuGaugeVal.Foreground = new SolidColorBrush(TempHeatColor(snap.CpuTemp));
             CpuGaugeSub.Text = $"load {snap.CpuLoad:0}%";
-            DrawGauge(CpuGauge, snap.CpuTemp, 30, 95, c);
+            DrawGauge(CpuGauge, snap.CpuTemp, 30, 95, cpuRing);
         }
         else { CpuGaugeVal.Text = "—"; CpuGaugeSub.Text = "load —%"; DrawGauge(CpuGauge, 0, 30, 95, default); }
 
         // GPU
         if (snap.GpuTemp > 0)
         {
-            var c = TempHeatColor(snap.GpuTemp);
             GpuGaugeVal.Text = $"{snap.GpuTemp:0}";
-            GpuGaugeVal.Foreground = new SolidColorBrush(c);
+            GpuGaugeVal.Foreground = new SolidColorBrush(TempHeatColor(snap.GpuTemp));
             GpuGaugeSub.Text = $"load {snap.GpuLoad:0}%";
-            DrawGauge(GpuGauge, snap.GpuTemp, 30, 95, c);
+            DrawGauge(GpuGauge, snap.GpuTemp, 30, 95, gpuRing);
         }
         else { GpuGaugeVal.Text = "—"; GpuGaugeSub.Text = "load —%"; DrawGauge(GpuGauge, 0, 30, 95, default); }
 
@@ -2838,6 +2846,47 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Temperature bands (stepped color) ──────────────────────────────────────
+
+    /// <summary>Populates the 3 band swatch rows + threshold boxes + range labels from settings.</summary>
+    private void SetupTempBandSwatches()
+    {
+        PopulateSwatches(TempCoolBandSwatches, _tempPalette, App.Settings.TempBandCoolColorHex, hex => Vm.SetTempCoolBand(hex));
+        PopulateSwatches(TempWarmBandSwatches, _tempPalette, App.Settings.TempBandWarmColorHex, hex => Vm.SetTempWarmBand(hex));
+        PopulateSwatches(TempHotBandSwatches,  _tempPalette, App.Settings.TempBandHotColorHex,  hex => Vm.SetTempHotBand(hex));
+        TempWarmThreshBox.Text = App.Settings.TempWarmThresholdC.ToString();
+        TempHotThreshBox.Text  = App.Settings.TempHotThresholdC.ToString();
+        UpdateTempBandLabels();
+    }
+
+    /// <summary>Validates and persists the warm/hot thresholds, then refreshes the range labels.</summary>
+    private void OnTempThresholdChanged(object sender, RoutedEventArgs e)
+    {
+        int warm = App.Settings.TempWarmThresholdC;
+        int hot  = App.Settings.TempHotThresholdC;
+        if (int.TryParse(TempWarmThreshBox.Text, out int w)) warm = Math.Clamp(w, 0, 120);
+        if (int.TryParse(TempHotThreshBox.Text,  out int h)) hot  = Math.Clamp(h, 0, 121);
+        if (hot <= warm) hot = Math.Min(warm + 1, 121);   // hot must sit above warm
+
+        App.Settings.TempWarmThresholdC = warm;
+        App.Settings.TempHotThresholdC  = hot;
+        SettingsManager.Save(App.Settings);
+
+        // Reflect any clamping back into the boxes + labels.
+        TempWarmThreshBox.Text = warm.ToString();
+        TempHotThreshBox.Text  = hot.ToString();
+        UpdateTempBandLabels();
+    }
+
+    private void UpdateTempBandLabels()
+    {
+        int warm = App.Settings.TempWarmThresholdC;
+        int hot  = App.Settings.TempHotThresholdC;
+        TempCoolBandLabel.Text = $"Cool — below {warm}°C";
+        TempWarmBandLabel.Text = $"Warm — {warm}–{hot - 1}°C";
+        TempHotBandLabel.Text  = $"Hot — {hot}°C and above";
+    }
+
     // Persist a domain's dominant color; live-refresh the accent if that domain is active.
     private void SetDomainColor(AppDomainMode mode, string hex)
     {
@@ -3255,12 +3304,11 @@ public partial class MainWindow : Window
         PopulateSwatches(CpuColorSwatches,  App.Settings.CpuColorHex,      hex => Vm.SetCpuColor(hex));
         PopulateSwatches(GpuColorSwatches,  App.Settings.GpuColorHex,      hex => Vm.SetGpuColor(hex));
         PopulateSwatches(RamColorSwatches,  App.Settings.RamColorHex,      hex => Vm.SetRamColor(hex));
-        PopulateSwatches(TempColdSwatches,  App.Settings.TempColdColorHex, hex => Vm.SetTempColdColor(hex));
-        PopulateSwatches(TempHotSwatches,   App.Settings.TempHotColorHex,  hex => Vm.SetTempHotColor(hex));
+        SetupTempBandSwatches();
         PopulateSwatches(PingGoodSwatches,  App.Settings.PingGoodColorHex, hex => Vm.SetPingGoodColor(hex));
         PopulateSwatches(PingBadSwatches,   App.Settings.PingBadColorHex,  hex => Vm.SetPingBadColor(hex));
-        PopulateSwatches(NetworkAccentSwatches,  _networkPalette,  App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
-        PopulateSwatches(HardwareAccentSwatches, _hardwarePalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
+        PopulateSwatches(NetworkAccentSwatches,  _domainPalette, App.Settings.NetworkColorHex,  hex => SetDomainColor(AppDomainMode.Network, hex));
+        PopulateSwatches(HardwareAccentSwatches, _domainPalette, App.Settings.HardwareColorHex, hex => SetDomainColor(AppDomainMode.Hardware, hex));
 
         // Behavior toggles
         InitBehaviourToggles();

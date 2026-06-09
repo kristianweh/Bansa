@@ -106,7 +106,7 @@ Three tabs — *General · Network · Appearance*:
 
 - *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup.
 - *Network* — ISP connection speed and related network preferences.
-- *Appearance* — dark/light theme; **per-domain accent color** (Network / Hardware); separate color pickers for download/upload graph, CPU, GPU, and RAM; gradient endpoint pickers for temperature and ping indicators.
+- *Appearance* — dark/light theme; **per-domain accent color** (Network / Hardware, full color palette for each); separate color pickers for download/upload graph, CPU, GPU, and RAM; **temperature color bands** (set the warm/hot thresholds and a flat color per band — cool/warm/hot, with a small eased transition at each boundary); ping good/bad gradient pickers.
 
 ---
 

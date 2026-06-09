@@ -348,22 +348,8 @@ public partial class HardwareHistoryView : UserControl
         }
     }
 
-    private Color TempColor(double t)
-    {
-        var cold = Parse(App.Settings?.TempColdColorHex, Color.FromRgb(0x70, 0xC8, 0xFF));
-        var hot = Parse(App.Settings?.TempHotColorHex, Color.FromRgb(0xFF, 0x80, 0x80));
-        double f = Math.Clamp((t - 50.0) / 40.0, 0, 1);
-        return Color.FromRgb(
-            (byte)(cold.R + (hot.R - cold.R) * f),
-            (byte)(cold.G + (hot.G - cold.G) * f),
-            (byte)(cold.B + (hot.B - cold.B) * f));
-    }
-
-    private static Color Parse(string? hex, Color fallback)
-    {
-        try { return string.IsNullOrEmpty(hex) ? fallback : (Color)ColorConverter.ConvertFromString(hex); }
-        catch { return fallback; }
-    }
+    // Cool (user-set "blue") → bright yellow → bright red. See Services/HeatColors.
+    private static Color TempColor(double t) => HeatColors.Temp(t);
 
     private void OnExportCsv(object sender, RoutedEventArgs e)
     {
