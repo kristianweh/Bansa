@@ -2,6 +2,8 @@
 # Visual Studio Version 17
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bansa", "Bansa\Bansa.csproj", "{8D6C9F9B-1A2E-4B3C-9D4E-5F6A7B8C9D0E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bansa.Tests", "Bansa.Tests\Bansa.Tests.csproj", "{3FA1EA80-E13E-46D5-AFFE-0195F0F7DF58}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{8D6C9F9B-1A2E-4B3C-9D4E-5F6A7B8C9D0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D6C9F9B-1A2E-4B3C-9D4E-5F6A7B8C9D0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D6C9F9B-1A2E-4B3C-9D4E-5F6A7B8C9D0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FA1EA80-E13E-46D5-AFFE-0195F0F7DF58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FA1EA80-E13E-46D5-AFFE-0195F0F7DF58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FA1EA80-E13E-46D5-AFFE-0195F0F7DF58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FA1EA80-E13E-46D5-AFFE-0195F0F7DF58}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

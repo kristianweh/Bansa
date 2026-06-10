@@ -439,6 +439,10 @@ public partial class TrayPopupWindow : Window
 
     private void UpdateTrayHardware(HardwareSnapshot snap)
     {
+        // The popup is hidden most of the time — skip the UI work entirely; ShowAt
+        // refreshes from HardwareMonitor.Latest, so nothing is stale on open.
+        if (!IsVisible) return;
+
         // CPU
         TrayHwCpuPct.Text = $"{snap.CpuLoad:0}%";
         TrayHwCpuBarFill.Width = TrayHwCpuBarBg.ActualWidth * snap.CpuLoad / 100.0;

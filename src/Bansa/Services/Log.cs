@@ -15,6 +15,7 @@ namespace Bansa.Services;
 public static class Log
 {
     private static readonly object _gate = new();
+    private const long MaxBytes = 1_000_000;   // rotate at ~1 MB so the log can't grow unbounded
 
     public static void Debug(string context, Exception ex) => Write($"{context}: {ex}");
     public static void Debug(string message) => Write(message);
@@ -24,9 +25,17 @@ public static class Log
         try
         {
             lock (_gate)
-                File.AppendAllText(
-                    Path.Combine(App.DataFolder, "crash.log"),
-                    $"[{DateTime.Now:O}] {line}\n");
+            {
+                var path = Path.Combine(App.DataFolder, "crash.log");
+                var fi = new FileInfo(path);
+                if (fi.Exists && fi.Length > MaxBytes)
+                {
+                    var old = path + ".old";
+                    File.Delete(old);
+                    File.Move(path, old);
+                }
+                File.AppendAllText(path, $"[{DateTime.Now:O}] {line}\n");
+            }
         }
         catch { /* best-effort; never throw */ }
     }

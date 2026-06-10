@@ -1006,33 +1006,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ── Local-address classification ──────────────────────────────────────────
 
-    /// <summary>
-    /// Returns true for loopback (127.x, ::1), link-local (169.254.x), and
-    /// all RFC-1918 private ranges (10.x, 172.16-31.x, 192.168.x).
-    /// These addresses never leave the machine or local subnet.
-    /// </summary>
-    private static bool IsLocalAddress(string addr)
-    {
-        if (string.IsNullOrEmpty(addr)) return false;
-        if (addr == "::1" || addr == "0:0:0:0:0:0:0:1") return true;   // IPv6 loopback
-        if (addr.StartsWith("::ffff:", StringComparison.Ordinal))        // IPv4-mapped IPv6
-            addr = addr["::ffff:".Length..];
-        if (addr.StartsWith("127.")) return true;                        // IPv4 loopback
-        if (addr.StartsWith("169.254.")) return true;                    // link-local
-        if (addr.StartsWith("192.168.")) return true;                    // RFC-1918
-        if (addr.StartsWith("10.")) return true;                         // RFC-1918
-        if (addr.StartsWith("172."))                                     // RFC-1918 172.16-31.x
-        {
-            var dots = addr.AsSpan();
-            int firstDot = dots.IndexOf('.');
-            int secondDot = firstDot >= 0 ? dots[(firstDot + 1)..].IndexOf('.') + firstDot + 1 : -1;
-            if (firstDot > 0 && secondDot > firstDot &&
-                int.TryParse(dots[(firstDot + 1)..secondDot], out int oct2) &&
-                oct2 >= 16 && oct2 <= 31)
-                return true;
-        }
-        return false;
-    }
+    // Shared with NetworkMonitor's ETW packet filter (IpClassifier) so row
+    // classification and traffic counting agree on what counts as local —
+    // including CGNAT (Tailscale/ZeroTier) and multicast, which the old
+    // string-prefix version here missed.
+    private static bool IsLocalAddress(string addr) => IpClassifier.IsLocal(addr);
 
     // ── Ping management ──────────────────────────────────────────────────────
 
@@ -1091,24 +1069,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task RefreshHourlyUsageAsync()
     {
-        var snapshot = Apps.ToList();
         var from = DateTime.UtcNow.AddHours(-1);
         var to   = DateTime.UtcNow;
 
-        foreach (var app in snapshot)
+        try
         {
-            try
+            // One grouped query for every app instead of one query per app.
+            var totals = await Task.Run(() => _history.GetTotals(from, to));
+            var byName = new Dictionary<string, (long In, long Out)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (name, bytesIn, bytesOut) in totals)
+                byName[name] = (bytesIn, bytesOut);
+
+            // Back on UI thread (SynchronizationContext captured by await)
+            foreach (var app in Apps)
             {
-                var name = app.Name;
-                var rows = await Task.Run(() => _history.GetAppHourly(name, from, to));
-                long bytesIn  = rows.Sum(r => r.BytesIn);
-                long bytesOut = rows.Sum(r => r.BytesOut);
-                // Back on UI thread (SynchronizationContext captured by await)
-                app.HourlyDownText = bytesIn  > 0 ? Format.Bytes(bytesIn)  : "—";
-                app.HourlyUpText   = bytesOut > 0 ? Format.Bytes(bytesOut) : "—";
+                byName.TryGetValue(app.Name, out var t);
+                app.HourlyDownText = t.In  > 0 ? Format.Bytes(t.In)  : "—";
+                app.HourlyUpText   = t.Out > 0 ? Format.Bytes(t.Out) : "—";
             }
-            catch { /* non-fatal — tooltip just stays stale */ }
         }
+        catch { /* non-fatal — tooltips just stay stale */ }
     }
 
     public void Dispose()

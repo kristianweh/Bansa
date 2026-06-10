@@ -34,6 +34,7 @@ public class BansaSettings
     public bool StartMinimizedToTray { get; set; } = false;
     public bool ShowTrayIcon         { get; set; } = true;
     public bool WelcomeDismissed     { get; set; } = false;  // first-run reversibility explainer shown
+    public bool HardwareHintDismissed { get; set; } = false; // one-time session-recording hint on the Hardware tab
     public string PingTarget { get; set; } = "8.8.8.8";
     public List<string> PingTargets { get; set; } = new()
         { "8.8.8.8", "1.1.1.1", "9.9.9.9", "8.8.4.4", "208.67.222.222" };
@@ -110,6 +111,16 @@ public class BansaSettings
     // Virtual-key code for the Ctrl+Shift+? hotkey. 0x46='F' default. 0 = no hotkey (cleared by user).
     public int HotkeyVirtualKey { get; set; } = 0x46;
 
+    // ── Hardware monitor ──────────────────────────────────────────────────────
+    /// <summary>GPU to display on multi-GPU machines (matched by LHM hardware name).
+    /// Empty = automatic (NVIDIA dGPU &gt; AMD &gt; Intel).</summary>
+    public string PreferredGpuName { get; set; } = "";
+
+    // ── Monthly data budget ───────────────────────────────────────────────────
+    /// <summary>Monthly usage budget in GB (download + upload combined). 0 = no budget.
+    /// Shown against the "This month" tile in History (Network).</summary>
+    public int MonthlyQuotaGB { get; set; } = 0;
+
     // ── Connection speed (used for limit suggestions) ─────────────────────────
     /// <summary>User's ISP upload speed in Mbps. 0 = not configured.</summary>
     public int ConnectionUploadMbps   { get; set; } = 0;
@@ -183,20 +194,16 @@ public static class SettingsManager
 
     public static BansaSettings Load()
     {
-        BansaSettings s;
-        try
+        // A corrupt settings.json (crash/power loss mid-write) silently resetting every
+        // limit and preference is the worst failure mode here, so fall back to the .bak
+        // written by Save() before giving up and starting fresh.
+        BansaSettings? s = TryLoadFile(SettingsPath);
+        if (s is null && File.Exists(SettingsPath + ".bak"))
         {
-            if (File.Exists(SettingsPath))
-            {
-                var json = File.ReadAllText(SettingsPath);
-                s = JsonSerializer.Deserialize<BansaSettings>(json) ?? new BansaSettings();
-            }
-            else
-            {
-                s = new BansaSettings();
-            }
+            s = TryLoadFile(SettingsPath + ".bak");
+            if (s is not null) Log.Debug("Settings: main file unreadable, restored from .bak");
         }
-        catch { s = new BansaSettings(); }
+        s ??= new BansaSettings();
 
         // Merge default ping targets / labels for users upgrading from older versions.
         foreach (var (ip, label) in _defaultTargets)
@@ -210,13 +217,30 @@ public static class SettingsManager
         return s;
     }
 
+    private static BansaSettings? TryLoadFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            return JsonSerializer.Deserialize<BansaSettings>(File.ReadAllText(path));
+        }
+        catch (Exception ex) { Log.Debug($"Settings load '{Path.GetFileName(path)}'", ex); return null; }
+    }
+
     public static void Save(BansaSettings settings)
     {
         try
         {
             Directory.CreateDirectory(App.DataFolder);
             var json = JsonSerializer.Serialize(settings, JsonOpts);
-            File.WriteAllText(SettingsPath, json);
+            // Atomic write: serialize to a temp file, then swap it in. A crash mid-write
+            // can only ever corrupt the temp file; the previous good version becomes .bak.
+            var tmp = SettingsPath + ".tmp";
+            File.WriteAllText(tmp, json);
+            if (File.Exists(SettingsPath))
+                File.Replace(tmp, SettingsPath, SettingsPath + ".bak");
+            else
+                File.Move(tmp, SettingsPath);
             try { Changed?.Invoke(); } catch (Exception ex) { Log.Debug("SettingsManager.Changed handler", ex); }
         }
         catch (Exception ex) { Log.Debug("SettingsManager.Save", ex); }

@@ -40,7 +40,7 @@ public sealed class ToolsViewModel
             iconImagePath: "pack://application:,,,/Resources/logo_openrgb.png",
             toolsDir:      toolsDir,
             exeName:       "OpenRGB.exe",
-            websiteUrl:    "https://openrgb.org"));
+            websiteUrl:    "https://openrgb.org/releases.html"));
 
         // ── HWiNFO ────────────────────────────────────────────────────────
         Tools.Add(new ToolItem(
@@ -88,6 +88,16 @@ public sealed class ToolsViewModel
             iconImagePath: "pack://application:,,,/Resources/logo_ddu.png",
             url:           "https://www.guru3d.com/download/display-driver-uninstaller-download/",
             websiteOnly:   true));
+
+        // ── SpaceSniffer ──────────────────────────────────────────────────
+        Tools.Add(new ToolItem(
+            name:          "SpaceSniffer",
+            description:   "Visualize disk space as a zoomable treemap — find what's eating your drive.",
+            tileBrush:     Solid("#B5651D"),
+            iconImagePath: "pack://application:,,,/Resources/logo_spacesniffer.png",
+            toolsDir:      toolsDir,
+            exeName:       "SpaceSniffer.exe",
+            websiteUrl:    "https://www.uderzo.it/main_products/space_sniffer/download.html"));
     }
 
     private static WpfBrush Solid(string hex)

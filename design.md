@@ -4,7 +4,7 @@
 
 ## Design principles
 
-1. **Use Windows' own machinery, never replace it.** Every "action" we take maps to a built-in Windows feature (Defender Firewall rule, QoS Policy, ETW session). We never install kernel drivers, never modify system files, never run anything as SYSTEM.
+1. **Use Windows' own machinery, never replace it.** Every "action" we take maps to a built-in Windows feature (Defender Firewall rule, QoS Policy, ETW session). The network side uses zero kernel drivers. The one exception in the app is hardware sensors: CPU/GPU temperatures can't be read from user mode, so LibreHardwareMonitor loads its temporary WinRing0 driver (`Bansa.sys`) while Bansa runs — unloaded and deleted on exit, never installed, never persistent. We never modify system files, never run anything as SYSTEM.
 2. **Everything has an undo.** Each change we make is tagged with a `Bansa-` prefix so we can list and remove only our own changes. A single "Clean up & remove all Bansa changes" button restores the system to its pre-Bansa state.
 3. **One executable, one folder.** No installer required. Uninstall = delete the folder + click cleanup.
 4. **Admin only when running.** We don't install a service. Bansa asks for admin elevation when launched, does its work, and exits.

@@ -1296,10 +1296,6 @@
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
                                          Tag="general" Content="General" IsChecked="True"
                                          Click="OnSettingsTabClick" />
-                            <RadioButton x:Name="SettingsTabBtnNetwork"
-                                         Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
-                                         Tag="network" Content="Network"
-                                         Click="OnSettingsTabClick" />
                             <RadioButton x:Name="SettingsTabBtnAppearance"
                                          Style="{StaticResource SettingsTab}" GroupName="SettingsTabs"
                                          Tag="appearance" Content="Appearance"
@@ -1457,9 +1453,19 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Version footer -->
-                            <TextBlock Text="{Binding AppVersion}" HorizontalAlignment="Center"
-                                       Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,2,0,4" />
+                            <!-- Version footer + manual update check -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,4">
+                                <TextBlock Text="{Binding AppVersion}" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" />
+                                <Button x:Name="CheckUpdatesBtn" Content="Check for updates"
+                                        FontSize="11" Padding="10,4" Margin="12,0,0,0"
+                                        Click="OnCheckUpdatesClick" />
+                                <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="10,0,0,0" />
+                                <Button x:Name="OpenReleaseBtn" Content="Open download page"
+                                        FontSize="11" Padding="10,4" Margin="10,0,0,0"
+                                        Visibility="Collapsed" Click="OnOpenReleaseClick" />
+                            </StackPanel>
 
                         </StackPanel>
 
@@ -1627,8 +1633,8 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Connection Speed -->
-                            <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
+                            <!-- Connection Speed (re-parented into Limits & Scenarios at load) -->
+                            <Border x:Name="CardConnectionSpeed" Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
@@ -2000,6 +2006,33 @@
                                 <TextBlock x:Name="LimitedAppsEmpty"
                                            Text="No apps have limits or blocks yet. Right-click an app in Live Traffic to set one."
                                            FontSize="11" Foreground="{DynamicResource MutedTextBrush}" />
+
+                                <!-- Badge legend — the amber badges mean different things per direction -->
+                                <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="6"
+                                        Padding="10,8" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="WHAT THE AMBER BADGES IN LIVE TRAFFIC MEAN" FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,0,6" />
+                                        <Grid Margin="0,0,0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="↓" FontSize="11" Foreground="#F59E0B" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="1" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}"
+                                                       Text="Download limit is actively enforcing right now — the firewall pulse is holding the app at its cap. Normal while the app tries to exceed the limit." />
+                                        </Grid>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="↑" FontSize="11" Foreground="#F59E0B" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="1" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}"
+                                                       Text="App is still uploading above its cap — QoS shaping applies when a connection (re)opens, so an already-open connection stays uncapped until the app reconnects." />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 
@@ -2027,6 +2060,26 @@
                                      Fill="{DynamicResource SuccessBrush}" Opacity="0.35"
                                      ToolTip="Refreshing every 2 s" />
                         </Grid>
+
+                        <!-- One-time hint: session recording is the killer feature and easy to miss -->
+                        <Border x:Name="HwHintBanner" Visibility="Collapsed"
+                                Style="{StaticResource Card}" Padding="14,12" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="💡" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="12"
+                                           Foreground="{DynamicResource SubtleTextBrush}" VerticalAlignment="Center"
+                                           Text="Diagnosing a thermal problem? Record a session in History — every temperature sample is tagged with the app in the foreground, so a spike can be traced to the game that caused it. Sessions save automatically." />
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <Button Content="Open History" Padding="10,5" Margin="0,0,8,0" Click="OnHwHintOpenHistory" />
+                                    <Button Content="Got it" Padding="10,5" Click="OnHwHintGotIt" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
 
                         <!-- ══ Hero: thermal radial gauges + overlaid CPU/GPU temp timeline ══ -->
                         <Grid Margin="0,0,0,14">
@@ -2287,6 +2340,10 @@
                                             <TextBlock x:Name="GpuCardName" Text="—"
                                                        FontSize="11" Foreground="{DynamicResource SubtleTextBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="170" />
+                                            <!-- Multi-GPU picker — only shown when 2+ GPUs are detected -->
+                                            <ComboBox x:Name="GpuPickerCombo" Visibility="Collapsed"
+                                                      FontSize="11" MaxWidth="170" Margin="0,2,0,0"
+                                                      SelectionChanged="OnGpuPickerChanged" />
                                         </StackPanel>
                                     </StackPanel>
 

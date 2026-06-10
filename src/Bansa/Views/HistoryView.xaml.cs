@@ -41,8 +41,46 @@ public partial class HistoryView : UserControl
         InitializeComponent();
         FromPicker.SelectedDate = DateTime.Today;
         ToPicker.SelectedDate = DateTime.Today;
+        QuotaBox.Text = App.Settings.MonthlyQuotaGB > 0 ? App.Settings.MonthlyQuotaGB.ToString() : "0";
         Loaded += (_, _) => Reload();
         Unloaded += (_, _) => _history.Dispose();
+    }
+
+    // ── Monthly usage + budget ────────────────────────────────────────────────
+
+    private void RefreshMonthUsage()
+    {
+        var monthStartLocal = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var (bytesIn, bytesOut) = _history.GetRangeTotals(monthStartLocal.ToUniversalTime(), DateTime.UtcNow);
+        long total = bytesIn + bytesOut;
+
+        int quotaGb = App.Settings.MonthlyQuotaGB;
+        MonthText.Text = quotaGb > 0
+            ? $"{Format.Bytes(total)} / {quotaGb} GB"
+            : Format.Bytes(total);
+        MonthText.ToolTip = $"↓ {Format.Bytes(bytesIn)}   ↑ {Format.Bytes(bytesOut)}  (since {monthStartLocal:MMM d})";
+
+        bool over = quotaGb > 0 && total > (long)quotaGb * 1024L * 1024L * 1024L;
+        MonthText.SetResourceReference(ForegroundProperty, over ? "DangerBrush" : "TextBrush");
+        if (over) MonthText.Text += "  — over budget";
+    }
+
+    private void OnQuotaChanged(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(QuotaBox.Text.Trim(), out var gb) || gb < 0) gb = App.Settings.MonthlyQuotaGB;
+        gb = Math.Min(gb, 1_000_000);
+        QuotaBox.Text = gb.ToString();
+        if (gb != App.Settings.MonthlyQuotaGB)
+        {
+            App.Settings.MonthlyQuotaGB = gb;
+            SettingsManager.Save(App.Settings);
+        }
+        RefreshMonthUsage();
+    }
+
+    private void OnQuotaKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) OnQuotaChanged(sender, e);
     }
 
     private void OnPresetToday(object sender, RoutedEventArgs e)
@@ -115,6 +153,8 @@ public partial class HistoryView : UserControl
                 .Select(r => new ActivityRow(r.When, r.App, r.Action, r.Detail))
                 .ToList();
             ActivityGrid.ItemsSource = activityRows;
+
+            RefreshMonthUsage();
         }
         catch (Exception ex)
         {

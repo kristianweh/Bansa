@@ -96,6 +96,9 @@ public sealed class HistoryStore : IDisposable
 
     /// <summary>
     /// Returns per-process totals (bytes in / out) over a time window.
+    /// Unions the high-resolution samples table (last 24 h) with the hourly rollup table —
+    /// Rollup() moves anything older than 24 h into hourly, so querying samples alone
+    /// silently drops everything beyond the last day.
     /// </summary>
     public List<(string Name, long BytesIn, long BytesOut)> GetTotals(DateTime fromUtc, DateTime toUtc)
     {
@@ -105,11 +108,15 @@ public sealed class HistoryStore : IDisposable
         {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT process, SUM(bytes_in), SUM(bytes_out)
-            FROM samples
-            WHERE ts BETWEEN $from AND $to
+            SELECT process, SUM(bi), SUM(bo) FROM (
+                SELECT process, bytes_in AS bi, bytes_out AS bo
+                FROM samples WHERE ts BETWEEN $from AND $to
+                UNION ALL
+                SELECT process, bytes_in, bytes_out
+                FROM hourly WHERE hour BETWEEN $from AND $to
+            )
             GROUP BY process
-            ORDER BY SUM(bytes_in) + SUM(bytes_out) DESC";
+            ORDER BY SUM(bi) + SUM(bo) DESC";
         cmd.Parameters.AddWithValue("$from", from);
         cmd.Parameters.AddWithValue("$to", to);
 
@@ -120,6 +127,34 @@ public sealed class HistoryStore : IDisposable
             list.Add((r.GetString(0), r.GetInt64(1), r.GetInt64(2)));
         }
         return list;
+        } // lock
+    }
+
+    /// <summary>
+    /// Returns total bytes (in, out) across all processes over a time window,
+    /// spanning both the samples and hourly rollup tables. Used by the
+    /// "This month" usage tile.
+    /// </summary>
+    public (long BytesIn, long BytesOut) GetRangeTotals(DateTime fromUtc, DateTime toUtc)
+    {
+        var from = new DateTimeOffset(fromUtc, TimeSpan.Zero).ToUnixTimeSeconds();
+        var to   = new DateTimeOffset(toUtc,   TimeSpan.Zero).ToUnixTimeSeconds();
+        lock (_lock)
+        {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(SUM(bi), 0), COALESCE(SUM(bo), 0) FROM (
+                SELECT bytes_in AS bi, bytes_out AS bo
+                FROM samples WHERE ts BETWEEN $from AND $to
+                UNION ALL
+                SELECT bytes_in, bytes_out
+                FROM hourly WHERE hour BETWEEN $from AND $to
+            )";
+        cmd.Parameters.AddWithValue("$from", from);
+        cmd.Parameters.AddWithValue("$to",   to);
+
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt64(0), r.GetInt64(1)) : (0, 0);
         } // lock
     }
 

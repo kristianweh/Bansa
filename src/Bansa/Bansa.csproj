@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Bansa</AssemblyName>
     <RootNamespace>Bansa</RootNamespace>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <ApplicationIcon>Resources\Icon_bansa-dark.ico</ApplicationIcon>
     <Company>Personal</Company>
     <Product>Bansa</Product>
@@ -36,6 +36,7 @@
     <Resource Include="Resources\logo_ctt.png" />
     <Resource Include="Resources\logo_ddu.png" />
     <Resource Include="Resources\logo_fancontrol.png" />
+    <Resource Include="Resources\logo_spacesniffer.png" />
     <!-- Inter — bundled as WPF resources so they render identically
          on any Windows install regardless of whether the user has the font installed.
          Reference in XAML: pack://application:,,,/Fonts/#Inter -->
@@ -44,6 +45,10 @@
     <Resource Include="Fonts\Inter-SemiBold.ttf" />
     <Resource Include="Fonts\Inter-Bold.ttf" />
     <Resource Include="Fonts\Inter-Light.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bansa.Tests" />
   </ItemGroup>
 
   <ItemGroup>

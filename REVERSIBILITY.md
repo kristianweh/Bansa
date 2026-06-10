@@ -36,11 +36,11 @@ Bansa folder *without* first running Clean Up / Uninstall leaves this one policy
 
 ## Things Bansa does NOT do
 
-- ❌ Install kernel drivers
+- ❌ Install kernel drivers — one transparency note: hardware sensor readings (CPU/GPU temps) load LibreHardwareMonitor's temporary WinRing0 driver (`Bansa.sys`) while Bansa runs; it is unloaded and deleted on exit and never persists. All network features use no driver at all.
 - ❌ Install Windows services
 - ❌ Modify system files (Hosts, system DLLs, etc.)
 - ❌ Modify the network stack
 - ❌ Touch any TLS / certificate stores
 - ❌ Write outside `%LocalAppData%\Bansa\` (other than via Windows-supported Firewall/QoS APIs and the optional Task Scheduler entry)
 - ❌ Send any telemetry anywhere
-- ❌ Talk to the internet at all
+- ❌ Talk to the internet on its own — the only network requests are ones you trigger: the ping monitor, the speed test, and the manual "Check for updates" button (a single GitHub API call when clicked)

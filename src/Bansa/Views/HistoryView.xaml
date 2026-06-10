@@ -52,10 +52,24 @@
                             <TextBlock x:Name="TotalUpText" Text="—" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource ChartUpBrush}" />
                         </StackPanel>
                     </Border>
-                    <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="6" Padding="14,10">
+                    <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="6" Padding="14,10" Margin="0,0,10,0">
                         <StackPanel>
                             <TextBlock Text="RANGE" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" />
                             <TextBlock x:Name="RangeText" Text="—" FontSize="14" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <!-- Calendar-month usage — independent of the selected range above -->
+                    <Border Background="{DynamicResource PanelAltBrush}" CornerRadius="6" Padding="14,10">
+                        <StackPanel>
+                            <TextBlock Text="THIS MONTH" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" />
+                            <TextBlock x:Name="MonthText" Text="—" FontSize="18" FontWeight="SemiBold"
+                                       ToolTipService.ShowDuration="20000" />
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <TextBlock Text="Budget" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                                <TextBox x:Name="QuotaBox" Width="46" FontSize="10" Padding="4,1" Margin="6,0,4,0"
+                                         LostFocus="OnQuotaChanged" KeyDown="OnQuotaKeyDown" />
+                                <TextBlock Text="GB · 0 = off" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

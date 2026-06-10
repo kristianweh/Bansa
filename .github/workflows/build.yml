@@ -1,0 +1,24 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # The project invariant is 0 warnings / 0 errors — enforce it.
+      - name: Build (Release)
+        run: dotnet build src/Bansa.sln -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test src/Bansa.sln -c Release --no-build --verbosity normal

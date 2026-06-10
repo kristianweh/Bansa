@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Management;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
@@ -76,6 +78,14 @@ public sealed class HardwareMonitor : IDisposable
 
     // ── State ──────────────────────────────────────────────────────────────────
     public HardwareSnapshot Latest { get; private set; } = HardwareSnapshot.Empty;
+
+    /// <summary>
+    /// Names of every GPU detected on the last poll (dGPU + iGPU). Lets the UI offer a
+    /// picker on multi-GPU machines (laptop iGPU+dGPU, diagnose-a-friend's-PC). Which one
+    /// is shown is chosen by <see cref="BansaSettings.PreferredGpuName"/>, falling back to
+    /// NVIDIA &gt; AMD &gt; Intel when unset or no longer present.
+    /// </summary>
+    public IReadOnlyList<string> GpuNames { get; private set; } = Array.Empty<string>();
 
     /// <summary>Fires on the polling thread every ~2 s.</summary>
     public event Action<HardwareSnapshot>? Sampled;
@@ -184,8 +194,7 @@ public sealed class HardwareMonitor : IDisposable
             float gpuCoreMhz = 0, gpuMemMhz = 0, gpuFanRpm = 0, gpuFanPct = 0, gpuPowerW = 0;
             float ramUsed = 0, ramTotal = 0, ramSpeedMhz = 0;
             string gpuName = "";
-            bool hasNvidiaGpu   = false;   // NVIDIA dGPU always wins
-            bool hasFallbackGpu = false;   // AMD iGPU / Intel iGPU — used only when no NVIDIA
+            var gpus = new List<IHardware>();   // every GPU seen this poll; winner picked after the loop
 
             foreach (var hw in _computer.Hardware)
             {
@@ -257,38 +266,12 @@ public sealed class HardwareMonitor : IDisposable
                         break;
                     }
 
-                    // ── NVIDIA dGPU — always wins, overrides any previously captured AMD/Intel ──
+                    // ── GPUs — collect all, pick a winner after the loop ────────
                     case HardwareType.GpuNvidia:
-                    {
-                        hasNvidiaGpu = true;
-                        // Reset in case AMD iGPU was captured first
-                        gpuName = hw.Name;
-                        gpuLoad = gpuTemp = vramUsed = vramTotal = 0;
-                        gpuCoreMhz = gpuMemMhz = gpuFanRpm = gpuFanPct = gpuPowerW = 0;
-                        ReadGpuSensors(hw,
-                            ref gpuLoad, ref gpuTemp,
-                            ref vramUsed, ref vramTotal,
-                            ref gpuCoreMhz, ref gpuMemMhz,
-                            ref gpuFanRpm, ref gpuFanPct,
-                            ref gpuPowerW);
-                        break;
-                    }
-
-                    // ── AMD GPU — could be iGPU or dGPU; capture only when no NVIDIA found ──
                     case HardwareType.GpuAmd:
+                    case HardwareType.GpuIntel:
                     {
-                        if (hasNvidiaGpu)   break; // NVIDIA already captured — skip AMD iGPU
-                        if (hasFallbackGpu) break; // already have an AMD fallback
-                        hasFallbackGpu = true;
-                        gpuName = hw.Name;
-                        gpuLoad = gpuTemp = vramUsed = vramTotal = 0;
-                        gpuCoreMhz = gpuMemMhz = gpuFanRpm = gpuFanPct = gpuPowerW = 0;
-                        ReadGpuSensors(hw,
-                            ref gpuLoad, ref gpuTemp,
-                            ref vramUsed, ref vramTotal,
-                            ref gpuCoreMhz, ref gpuMemMhz,
-                            ref gpuFanRpm, ref gpuFanPct,
-                            ref gpuPowerW);
+                        gpus.Add(hw);
                         break;
                     }
 
@@ -296,20 +279,6 @@ public sealed class HardwareMonitor : IDisposable
                     case HardwareType.Motherboard:
                     {
                         if (_motherboardName.Length == 0) _motherboardName = hw.Name;
-                        break;
-                    }
-
-                    // ── Intel iGPU — lowest priority fallback ───────────────────
-                    case HardwareType.GpuIntel:
-                    {
-                        if (hasNvidiaGpu || hasFallbackGpu) break; // better GPU already found
-                        gpuName = hw.Name;
-                        ReadGpuSensors(hw,
-                            ref gpuLoad, ref gpuTemp,
-                            ref vramUsed, ref vramTotal,
-                            ref gpuCoreMhz, ref gpuMemMhz,
-                            ref gpuFanRpm, ref gpuFanPct,
-                            ref gpuPowerW);
                         break;
                     }
 
@@ -334,6 +303,26 @@ public sealed class HardwareMonitor : IDisposable
                         break;
                     }
                 }
+            }
+
+            // ── GPU winner: user preference first, then dGPU-over-iGPU priority ──
+            GpuNames = gpus.Count > 0 ? gpus.Select(g => g.Name).ToArray() : Array.Empty<string>();
+            IHardware? gpu = null;
+            var preferred = App.Settings?.PreferredGpuName;
+            if (!string.IsNullOrEmpty(preferred))
+                gpu = gpus.FirstOrDefault(g => string.Equals(g.Name, preferred, StringComparison.OrdinalIgnoreCase));
+            gpu ??= gpus.FirstOrDefault(g => g.HardwareType == HardwareType.GpuNvidia)
+                 ?? gpus.FirstOrDefault(g => g.HardwareType == HardwareType.GpuAmd)
+                 ?? gpus.FirstOrDefault(g => g.HardwareType == HardwareType.GpuIntel);
+            if (gpu is not null)
+            {
+                gpuName = gpu.Name;
+                ReadGpuSensors(gpu,
+                    ref gpuLoad, ref gpuTemp,
+                    ref vramUsed, ref vramTotal,
+                    ref gpuCoreMhz, ref gpuMemMhz,
+                    ref gpuFanRpm, ref gpuFanPct,
+                    ref gpuPowerW);
             }
 
             var snap = new HardwareSnapshot(

@@ -1,10 +1,12 @@
 # Bansa
 
-A non-intrusive, fully-reversible per-app bandwidth **and hardware** monitor for Windows — built entirely on the OS's own machinery (no kernel drivers), so every change can be undone with one click.
+A non-intrusive, fully-reversible per-app bandwidth **and hardware** monitor for Windows — all network monitoring and control is built on the OS's own machinery (no kernel drivers), so every change can be undone with one click. The one exception is hardware sensor access — see [the note below](#the-one-exception-the-hardware-sensor-driver).
 
-> **Status:** v1.1 — personal use, no commercial intent.
+> **Status:** v1.2 — personal use, no commercial intent.
 
-**New in v1.1 — dual-domain redesign.** A header toggle switches Bansa between two purposes, re-skinning the whole accent:
+**New in v1.2 — robustness & efficiency.** Crash-safe settings (atomic write + automatic backup recovery), single-instance guard, a manual update check, monthly usage tracking with an optional data budget, multi-GPU picker, a 7d/30d history fix (older data was silently dropped from totals), Limits & Scenarios consolidation (connection speed + speed test moved in, Settings is now General · Appearance), visibility-gated rendering (near-zero UI cost while in the tray), SpaceSniffer in Tools, a unit-test suite, and CI.
+
+**v1.1 — dual-domain redesign.** A header toggle switches Bansa between two purposes, re-skinning the whole accent:
 > - **Network** — live throughput, per-app traffic, limits & scenarios.
 > - **Hardware** — CPU/GPU thermal gauges, an overlaid temperature timeline, and recordable monitoring sessions (great for diagnosing a friend's PC).
 >
@@ -56,7 +58,7 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Tray icon with live ↓/↑ rates and a ping indicator. Left-click to toggle the popup; double-click to open the main window. Popup position is remembered when dragged.
 - Continuous ping to a configurable target displayed in the sidebar.
 - Sidebar STATUS cluster — live CPU/GPU temperature donuts, download/upload totals, ping, and Scenarios / Global Cap toggles. Each box is clickable and jumps to the matching tab.
-- **Hardware dashboard** — CPU/GPU/RAM radial thermal gauges plus an overlaid CPU/GPU temperature timeline (smoothed, gradient-filled) with hover crosshair.
+- **Hardware dashboard** — CPU/GPU/RAM radial thermal gauges plus an overlaid CPU/GPU temperature timeline (smoothed, gradient-filled) with hover crosshair. On multi-GPU machines (laptop iGPU + dGPU) a picker in the GPU card chooses which GPU is shown.
 - **Network dashboard** — Download / Upload / Ping hero, a UniFi-style mirrored throughput timeline (download above the axis, upload below), a per-app bandwidth-share donut, and a live top-talkers list.
 - **Floating HUD** — detachable, always-on-top overlay with three tabs (**Net / Temp / Both**): network sparkline + ping + top apps, CPU/GPU temp gauges + timeline, and RAM. Drag via the rates bar or the bottom switch; right-click for options. Position is remembered and safely clamped to the visible screen on different machines.
 
@@ -89,23 +91,23 @@ Replace `Bansa.exe` with the new version. Settings, history, and any tools in `D
 - Optionally **keep the cap active when Bansa is closed** — leaves the smooth QoS layer in place so the cap persists across reboots without the app running. (The firewall hard layer still needs the app open.) It's the one thing Bansa intentionally leaves behind; turning the cap off, the **Clean Up** button, or `Uninstall-Bansa.ps1` removes it.
 
 **History tab** (domain-aware — shows Network history in Network mode, Hardware history in Hardware mode)
-- *Network* — total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom); activity log of every block, limit, and priority change; export to CSV.
+- *Network* — total bytes per app over any date range (Today / Last 7 d / Last 30 d / custom); a **"This month" usage tile with an optional monthly data budget** (GB, turns red when exceeded — for capped/metered connections); activity log of every block, limit, and priority change; export to CSV.
 - *Hardware* — **record a monitoring session** to log CPU/GPU temperatures and loads, each tagged with the foreground app so a thermal spike can be traced to the game/app that caused it. Sessions **auto-save and persist** across restarts (a picker lists past sessions), with min/avg/max + peak-with-culprit summary, a "hottest apps" list, and CSV export.
 
 **Tools tab**
 - Browse and launch portable utilities: OpenRGB, HWiNFO, ShareX, Chris Titus WinUtil, FanControl, DDU — all with real brand logos.
 - Tools stored as portables in `Data\Tools\`; click the directory link to open the folder directly.
 - Website button opens the download page when a tool isn't installed yet.
+- ⚠️ Bansa runs as administrator, so anything launched from this tab **inherits admin rights** — only place executables you trust in `Data\Tools\`.
 
 **Limits & Scenarios tab**
-- **Apps with limits** — every app that currently has an up/down limit, with inline **Edit** / **Clear** (no need to find it in the live list first).
-- **Limit profiles**, **Global Upload Cap**, **Ping Monitor**, and the **Scenario editor** all live here in one place.
+- **Apps with limits** — every app that currently has an up/down limit, with inline **Edit** / **Clear** (no need to find it in the live list first), plus a legend explaining what the amber throttle badges mean.
+- **Limit profiles**, **Global Upload Cap**, **Ping Monitor**, **Connection Speed**, the **Scenario editor**, and the **speed test** all live here — everything network-control in one place.
 
 **Settings** (opened from the header gear)
-Three tabs — *General · Network · Appearance*:
+Two tabs — *General · Appearance*:
 
-- *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup.
-- *Network* — ISP connection speed and related network preferences.
+- *General* — units, global hotkey, startup & window behavior (minimize on close, start minimized to tray, show/hide tray icon), settings backup (export/import), system cleanup, and a manual update check (one GitHub API call, only when you click it).
 - *Appearance* — dark/light theme; **per-domain accent color** (Network / Hardware, full color palette for each); separate color pickers for download/upload graph, CPU, GPU, and RAM; **temperature color bands** (set the warm/hot thresholds and a flat color per band — cool/warm/hot, with a small eased transition at each boundary); ping good/bad gradient pickers.
 
 ---
@@ -135,10 +137,14 @@ This results in a **stutter pattern**: bursts of download alternating with block
 
 ## Design principles
 
-1. No kernel drivers. No installer. No background service.
+1. No kernel drivers for anything network — monitoring, limits, and blocks use ETW, Defender Firewall, and QoS Policy only. No installer. No background service.
 2. Single executable. Asks for admin elevation when launched.
 3. Every change is tagged `Bansa-…` so cleanup finds and removes only Bansa's own changes.
 4. Built entirely on Defender Firewall, QoS Policy, ETW, IP Helper API — all native Windows.
+
+### The one exception: the hardware sensor driver
+
+CPU/GPU temperatures can't be read from user mode on Windows. Bansa uses LibreHardwareMonitor (the same library behind FanControl and similar tools), which loads a small kernel driver (`Bansa.sys`, based on WinRing0) at runtime to read MSR/SMBus sensors. It exists only while Bansa runs: created at startup, unloaded and deleted on exit, with a safety-net delete in case a crash leaves the file behind. Nothing is installed and nothing persists across sessions. Everything network-related works without it.
 
 See `design.md` for architecture and `REVERSIBILITY.md` for the full audit of system mutations.
 

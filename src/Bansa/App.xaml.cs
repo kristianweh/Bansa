@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Bansa.Services;
@@ -21,8 +22,44 @@ public partial class App : Application
 
     public static BansaSettings Settings { get; internal set; } = new();
 
+    // ── Single instance ──────────────────────────────────────────────────────
+    // Two Bansa processes are actively harmful: the second one's NetworkMonitor.Start()
+    // kills the first's ETW kernel session (session names are machine-global), both pulse
+    // firewall rules against each other, and whichever exits first tears down the other's
+    // rules. Global\ mutex because the ETW session name is global too.
+    private const string MutexName = @"Global\Bansa_SingleInstance";
+    private Mutex? _singleInstanceMutex;
+
+    /// <summary>
+    /// Machine-global window message broadcast by a second instance so the first one can
+    /// show/activate its main window. MainWindow handles it in WndProc.
+    /// </summary>
+    public static readonly int ShowMainWindowMessage =
+        RegisterWindowMessage("Bansa.ShowMainWindow");
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int RegisterWindowMessage(string message);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private static readonly IntPtr HWND_BROADCAST = new(0xFFFF);
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
+        if (!createdNew)
+        {
+            // Another Bansa is already running — ask it to show itself and bow out.
+            // Environment.Exit (not Shutdown): Shutdown() races the queued StartupUri
+            // navigation, and even a transiently-constructed MainWindow would create a
+            // MainViewModel whose ctor starts the ETW session — killing the first
+            // instance's session. Nothing is initialized yet, so a hard exit is clean.
+            PostMessage(HWND_BROADCAST, ShowMainWindowMessage, IntPtr.Zero, IntPtr.Zero);
+            _singleInstanceMutex.Dispose();
+            Environment.Exit(0);
+        }
+
         DataFolder  = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bansa");
         ToolsFolder = Path.Combine(AppContext.BaseDirectory, "Data", "Tools");
@@ -53,11 +90,17 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         HardwareMonitor.StopInstance();
+        if (_singleInstanceMutex is not null)
+        {
+            try { _singleInstanceMutex.ReleaseMutex(); } catch { }
+            _singleInstanceMutex.Dispose();
+        }
         base.OnExit(e);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        Log.Debug("DispatcherUnhandledException", e.Exception);
         MessageBox.Show(
             $"Bansa hit an unexpected error:\n\n{e.Exception.Message}\n\nThe app will keep running.",
             "Bansa",
@@ -69,15 +112,7 @@ public partial class App : Application
     private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception ex)
-        {
-            try
-            {
-                File.AppendAllText(
-                    Path.Combine(DataFolder, "crash.log"),
-                    $"[{DateTime.Now:O}] {ex}\n");
-            }
-            catch { /* best effort */ }
-        }
+            Log.Debug("Fatal (AppDomain)", ex);
     }
 
     private static void MigrateOldDataFolder()

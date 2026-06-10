@@ -433,15 +433,24 @@ public sealed class DownloadThrottler : IDisposable
         await _fwGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            foreach (var rn in ruleNames)
+            // One COM policy object per reconcile pass (not per rule) — at 10 Hz during
+            // active throttling, re-creating HNetCfg.FwPolicy2 for every add/remove is
+            // measurable COM churn for zero benefit.
+            await Task.Run(() =>
             {
-                bool wantPresent;
-                (string exePath, int dir) want;
-                lock (_lock) { wantPresent = _wantBlocked.TryGetValue(rn, out want); }
+                dynamic rules;
+                try { rules = GetFwRules(); } catch { return; }
 
-                if (wantPresent) await AddBlockAsync(rn, want.exePath, want.dir).ConfigureAwait(false);
-                else             await RemoveBlockAsync(rn).ConfigureAwait(false);
-            }
+                foreach (var rn in ruleNames)
+                {
+                    bool wantPresent;
+                    (string exePath, int dir) want;
+                    lock (_lock) { wantPresent = _wantBlocked.TryGetValue(rn, out want); }
+
+                    if (wantPresent) AddBlock(rules, rn, want.exePath, want.dir);
+                    else             TryRemoveFwRule(rules, rn);
+                }
+            }).ConfigureAwait(false);
         }
         finally { _fwGate.Release(); }
     }
@@ -475,35 +484,26 @@ public sealed class DownloadThrottler : IDisposable
     private const int NET_FW_RULE_DIR_OUT = 2;
     private const int NET_FW_PROFILE2_ALL = 0x7FFFFFFF;
 
-    private static Task<bool> AddBlockAsync(string ruleName, string exePath, int direction)
-        => Task.Run(() =>
+    /// <summary>Adds (replacing any stale copy) a block rule on an already-created rules collection.</summary>
+    private static void AddBlock(dynamic rules, string ruleName, string exePath, int direction)
+    {
+        try
         {
-            try
-            {
-                dynamic rules = GetFwRules();
-                TryRemoveFwRule(rules, ruleName);
+            TryRemoveFwRule(rules, ruleName);
 
-                var t = Type.GetTypeFromProgID("HNetCfg.FwRule")
-                    ?? throw new InvalidOperationException("HNetCfg.FwRule not registered.");
-                dynamic r = Activator.CreateInstance(t)!;
-                r.Name            = ruleName;
-                r.ApplicationName = exePath;
-                r.Action          = NET_FW_ACTION_BLOCK;
-                r.Direction       = direction;
-                r.Enabled         = true;
-                r.Profiles        = NET_FW_PROFILE2_ALL;
-                rules.Add(r);
-                return true;
-            }
-            catch { return false; }
-        });
-
-    private static Task<bool> RemoveBlockAsync(string ruleName)
-        => Task.Run(() =>
-        {
-            try { TryRemoveFwRule(GetFwRules(), ruleName); return true; }
-            catch { return false; }
-        });
+            var t = Type.GetTypeFromProgID("HNetCfg.FwRule")
+                ?? throw new InvalidOperationException("HNetCfg.FwRule not registered.");
+            dynamic r = Activator.CreateInstance(t)!;
+            r.Name            = ruleName;
+            r.ApplicationName = exePath;
+            r.Action          = NET_FW_ACTION_BLOCK;
+            r.Direction       = direction;
+            r.Enabled         = true;
+            r.Profiles        = NET_FW_PROFILE2_ALL;
+            rules.Add(r);
+        }
+        catch { }
+    }
 
     public static Task RemoveAllAsync()
         => Task.Run(() =>
@@ -589,7 +589,7 @@ public sealed class DownloadThrottler : IDisposable
     // independently. This is intentional and consistent across the app: QoS policy names
     // (QosManager.MakePolicyName) and the settings-clear logic (MainViewModel.RemoveLimitByFile)
     // all key by filename too. A personal-use trade-off; full-path identity would desync the layers.
-    private static string MakeRuleName(string prefix, string exePath)
+    internal static string MakeRuleName(string prefix, string exePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(exePath);
         var sb = new System.Text.StringBuilder(fileName.Length);
